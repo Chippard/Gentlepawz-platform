@@ -1,7 +1,6 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { PawHeartLogo } from "@/components/PawHeartLogo";
 import { Menu, X, ChevronDown } from "lucide-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
@@ -42,7 +41,7 @@ export default function TopNav() {
           onClick={() => handleNavClick("/")}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
         >
-          <PawHeartLogo size={28} className="text-primary" />
+          <img src="/gentle_pawz_logo.png" alt="Gentle Pawz" className="w-8 h-8" />
           <span className="font-serif text-xl font-bold hidden sm:inline">
             Gentle Pawz
           </span>

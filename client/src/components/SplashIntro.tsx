@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 
 interface SplashIntroProps {
   onComplete: () => void;
@@ -259,35 +259,15 @@ export default function SplashIntro({ onComplete }: SplashIntroProps) {
             <div className="splash-ring" style={{ animationDelay: "0.5s" }} />
             <div className="splash-ring" style={{ animationDelay: "0.8s" }} />
 
-            {/* Logo SVG */}
+            {/* Logo image */}
             <div className="splash-logo-container splash-glow">
-              <svg
+              <img
+                src="/gentle_pawz_logo.png"
+                alt="Gentle Pawz"
                 width="100"
                 height="100"
-                viewBox="0 0 100 100"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                {/* Heart shape */}
-                <path
-                  d="M50 85 C50 85 15 60 15 38 C15 25 25 15 37.5 15 C44 15 50 20 50 20 C50 20 56 15 62.5 15 C75 15 85 25 85 38 C85 60 50 85 50 85Z"
-                  fill="url(#heartGrad)"
-                  stroke="rgba(255,255,255,0.3)"
-                  strokeWidth="1"
-                />
-                {/* Paw print */}
-                <ellipse cx="42" cy="48" rx="5" ry="6" fill="white" />
-                <ellipse cx="58" cy="48" rx="5" ry="6" fill="white" />
-                <ellipse cx="35" cy="38" rx="4" ry="5" fill="white" />
-                <ellipse cx="65" cy="38" rx="4" ry="5" fill="white" />
-                <ellipse cx="50" cy="60" rx="8" ry="9" fill="white" />
-                <defs>
-                  <linearGradient id="heartGrad" x1="15" y1="15" x2="85" y2="85">
-                    <stop offset="0%" stopColor="#22d3ee" />
-                    <stop offset="100%" stopColor="#0891b2" />
-                  </linearGradient>
-                </defs>
-              </svg>
+                style={{ width: 100, height: 100, objectFit: "contain" }}
+              />
             </div>
           </div>
         )}

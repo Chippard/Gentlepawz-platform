@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { ArrowRight, Heart, Users, Shield, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocation } from "wouter";
 import TopNav from "@/components/TopNav";
-import { PawHeartLogo } from "@/components/PawHeartLogo";
 import SplashIntro from "@/components/SplashIntro";
+
+const LOGO_URL = "/gentle_pawz_logo.png";
 
 export default function Landing() {
   const [, setLocation] = useLocation();
@@ -222,7 +223,7 @@ export default function Landing() {
           <div className="grid md:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
-                <PawHeartLogo size={24} className="text-primary" />
+                <img src={LOGO_URL} alt="Gentle Pawz" className="w-8 h-8" />
                 <span className="font-serif font-bold">Gentle Pawz</span>
               </div>
               <p className="text-sm opacity-70">
