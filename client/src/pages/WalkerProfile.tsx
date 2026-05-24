@@ -25,7 +25,7 @@ export default function WalkerProfile() {
     location: "North Vancouver, BC",
     tagline: "The best care for your best friend",
     bio: "Active individual who loves adventures with dogs. Worked at a pet hospital for over a year caring for boarding animals. Has cared for many friends' animals and loved every minute.",
-    photo: "https://d2xsxph8kpxj0f.cloudfront.net/310519663631703889/HyjFhWM4C2oWxo7dXTLa4r/emily-profile-LdJXrzG5WUi2WX44Z5RGtf.webp",
+    photo: "https://files.manuscdn.com/user_upload_by_module/session_file/310519663631703889/wNcyibGbPclGWTzQ.jpg",
     skills: [
       "Oral medication administration",
       "First aid/CPR",
