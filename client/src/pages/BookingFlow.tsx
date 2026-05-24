@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { PawHeartLogo } from "@/components/PawHeartLogo";
 import { supabase } from "@/lib/supabase";
+import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { toast } from "sonner";
+import TopNav from "@/components/TopNav";
 import {
   ArrowLeft,
+  ArrowRight,
   Calendar,
   Clock,
   Dog,
@@ -14,9 +16,10 @@ import {
   RefreshCw,
   Loader2,
   PawPrint,
-  Mail,
-  User,
-  FileText,
+  Sun,
+  Moon,
+  Plus,
+  DollarSign,
 } from "lucide-react";
 import {
   format,
@@ -29,7 +32,6 @@ import {
   startOfDay,
   isWithinInterval,
   getDay,
-  addDays,
 } from "date-fns";
 
 const MAX_DOGS_PER_DAY = 2;
@@ -39,16 +41,59 @@ interface BookedDate {
   count: number;
 }
 
+interface Pet {
+  id: string;
+  name: string;
+  breed: string;
+  age: string;
+}
+
+type ServiceType = "daycare" | "boarding";
+
+interface ServiceOption {
+  type: ServiceType;
+  label: string;
+  description: string;
+  price: number;
+  unit: string;
+  icon: React.ReactNode;
+}
+
+const services: ServiceOption[] = [
+  {
+    type: "daycare",
+    label: "Day Care",
+    description: "Drop off in the morning, pick up in the evening. Includes walks, play, and nap time.",
+    price: 40,
+    unit: "day",
+    icon: <Sun className="w-6 h-6" />,
+  },
+  {
+    type: "boarding",
+    label: "Boarding",
+    description: "Overnight stays in our cozy home environment. 24/7 supervision and care.",
+    price: 60,
+    unit: "night",
+    icon: <Moon className="w-6 h-6" />,
+  },
+];
+
 export default function BookingFlow() {
   const [, setLocation] = useLocation();
+  const { user, loading: authLoading } = useSupabaseAuth();
 
-  // Form state
-  const [ownerName, setOwnerName] = useState("");
-  const [email, setEmail] = useState("");
-  const [petName, setPetName] = useState("");
-  const [notes, setNotes] = useState("");
+  // Step state
+  const [step, setStep] = useState(1);
 
-  // Calendar state
+  // Step 1: Service selection
+  const [selectedService, setSelectedService] = useState<ServiceType | null>(null);
+
+  // Step 2: Pet selection
+  const [pets, setPets] = useState<Pet[]>([]);
+  const [loadingPets, setLoadingPets] = useState(true);
+  const [selectedPetId, setSelectedPetId] = useState<string | null>(null);
+
+  // Step 3: Calendar state
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [startDate, setStartDate] = useState<Date | null>(null);
   const [endDate, setEndDate] = useState<Date | null>(null);
@@ -59,9 +104,42 @@ export default function BookingFlow() {
   const [blockedDates, setBlockedDates] = useState<Date[]>([]);
   const [loadingAvailability, setLoadingAvailability] = useState(true);
 
+  // Step 4: Notes
+  const [notes, setNotes] = useState("");
+
   // Submission state
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+
+  // Redirect if not authenticated
+  useEffect(() => {
+    if (!authLoading && !user) {
+      setLocation("/login");
+    }
+  }, [authLoading, user, setLocation]);
+
+  // Fetch pets
+  useEffect(() => {
+    if (!user) return;
+    const fetchPets = async () => {
+      setLoadingPets(true);
+      try {
+        const { data, error } = await supabase
+          .from("pets")
+          .select("id, name, breed, age")
+          .eq("owner_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+        setPets(data || []);
+      } catch (err: any) {
+        console.error("Error fetching pets:", err);
+      } finally {
+        setLoadingPets(false);
+      }
+    };
+    fetchPets();
+  }, [user]);
 
   // Fetch availability from Supabase
   const fetchAvailability = useCallback(async () => {
@@ -97,7 +175,7 @@ export default function BookingFlow() {
       );
       setBookedDates(booked);
 
-      // Fetch blocked dates if the table exists
+      // Fetch blocked dates
       try {
         const { data: blocked } = await supabase
           .from("blocked_dates")
@@ -106,7 +184,7 @@ export default function BookingFlow() {
           setBlockedDates(blocked.map((b: any) => new Date(b.date)));
         }
       } catch {
-        // blocked_dates table may not exist — that's fine
+        // blocked_dates table may not exist
       }
     } catch (err) {
       console.error("Failed to fetch availability:", err);
@@ -120,56 +198,46 @@ export default function BookingFlow() {
     fetchAvailability();
   }, [fetchAvailability]);
 
-  // Check if a date is fully booked (>= MAX_DOGS_PER_DAY)
+  // Calendar helpers
   const isFullyBooked = (date: Date) => {
     const found = bookedDates.find((b) => isSameDay(b.date, date));
     return found ? found.count >= MAX_DOGS_PER_DAY : false;
   };
 
-  // Check if a date is blocked
   const isBlocked = (date: Date) => {
     return blockedDates.some((b) => isSameDay(b, date));
   };
 
-  // Check if a date is in the past
   const isPast = (date: Date) => {
     return isBefore(date, startOfDay(new Date()));
   };
 
-  // Check if a date is unavailable
   const isUnavailable = (date: Date) => {
     return isPast(date) || isFullyBooked(date) || isBlocked(date);
   };
 
-  // Get booking count for a date
   const getBookingCount = (date: Date) => {
     const found = bookedDates.find((b) => isSameDay(b.date, date));
     return found ? found.count : 0;
   };
 
-  // Check if date is in selected range
   const isInRange = (date: Date) => {
     if (!startDate || !endDate) return false;
     return isWithinInterval(date, { start: startDate, end: endDate });
   };
 
-  // Handle date click
   const handleDateClick = (date: Date) => {
     if (isUnavailable(date)) return;
 
     if (!selectingEnd || !startDate) {
-      // Selecting start date
       setStartDate(date);
       setEndDate(null);
       setSelectingEnd(true);
     } else {
-      // Selecting end date
       if (isBefore(date, startDate)) {
-        // If clicked before start, reset
         setStartDate(date);
         setEndDate(null);
       } else {
-        // Check if any date in range is unavailable
         const range = eachDayOfInterval({ start: startDate, end: date });
         const hasUnavailable = range.some((d) => isUnavailable(d));
         if (hasUnavailable) {
@@ -184,48 +252,52 @@ export default function BookingFlow() {
     }
   };
 
-  // Generate calendar days for current month view
   const generateCalendarDays = () => {
     const monthStart = startOfMonth(currentMonth);
     const monthEnd = endOfMonth(currentMonth);
     const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-
-    // Pad start with empty cells for alignment
-    const startDayOfWeek = getDay(monthStart); // 0 = Sunday
+    const startDayOfWeek = getDay(monthStart);
     const paddedDays: (Date | null)[] = Array(startDayOfWeek).fill(null);
     paddedDays.push(...days);
-
     return paddedDays;
   };
 
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Calculate price
+  const calculateNights = () => {
+    if (!startDate || !endDate) return 0;
+    return Math.ceil(
+      (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+  };
 
-    if (!startDate || !endDate) {
-      toast.error("Please select your stay dates on the calendar.");
-      return;
-    }
-    if (!ownerName.trim() || !email.trim() || !petName.trim()) {
-      toast.error("Please fill in your name, email, and pet name.");
+  const calculatePrice = () => {
+    const nights = calculateNights();
+    const service = services.find((s) => s.type === selectedService);
+    if (!service) return 0;
+    return nights * service.price;
+  };
+
+  // Handle form submission
+  const handleSubmit = async () => {
+    if (!user || !selectedService || !selectedPetId || !startDate || !endDate) {
+      toast.error("Please complete all steps before submitting.");
       return;
     }
 
     setSubmitting(true);
     try {
+      const service = services.find((s) => s.type === selectedService);
       const { error } = await supabase.from("bookings").insert({
-        owner_name: ownerName.trim(),
-        email: email.trim(),
-        pet_name: petName.trim(),
+        customer_id: user.id,
+        service_type: selectedService,
         start_date: format(startDate, "yyyy-MM-dd"),
         end_date: format(endDate, "yyyy-MM-dd"),
+        price: calculatePrice(),
         notes: notes.trim() || null,
         status: "pending",
-        service_type: "boarding",
       });
 
       if (error) throw error;
-
       setSubmitted(true);
       toast.success("Booking request submitted!");
     } catch (err: any) {
@@ -238,37 +310,31 @@ export default function BookingFlow() {
     }
   };
 
+  // Loading state
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!user) return null;
+
   // Success screen
   if (submitted) {
+    const selectedPet = pets.find((p) => p.id === selectedPetId);
     return (
       <div className="min-h-screen bg-background">
-        <header className="border-b border-border bg-card sticky top-0 z-40">
-          <div className="container h-16 flex items-center justify-between">
-            <button
-              onClick={() => setLocation("/")}
-              className="flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Back to Home
-            </button>
-            <div className="flex items-center gap-2">
-              <PawHeartLogo size={24} className="text-primary" />
-              <span className="font-serif font-bold hidden sm:inline">
-                Gentle Pawz
-              </span>
-            </div>
-            <div className="w-20" />
-          </div>
-        </header>
-
+        <TopNav />
         <div className="container max-w-lg mx-auto py-20 text-center space-y-6">
           <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto">
             <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
           </div>
           <h1 className="text-3xl font-serif font-bold">Booking Submitted!</h1>
           <p className="text-foreground/60 text-lg">
-            Thank you, <strong>{ownerName}</strong>! Your stay request for{" "}
-            <strong>{petName}</strong> from{" "}
+            Thank you! Your {selectedService} request for{" "}
+            <strong>{selectedPet?.name}</strong> from{" "}
             <strong>{format(startDate!, "MMM d")}</strong> to{" "}
             <strong>{format(endDate!, "MMM d, yyyy")}</strong> has been received.
           </p>
@@ -279,50 +345,31 @@ export default function BookingFlow() {
             <ul className="text-sm text-foreground/70 space-y-1 list-disc list-inside">
               <li>Emily will review your request personally</li>
               <li>You'll receive a confirmation email within 24 hours</li>
-              <li>
-                If your dates are available, the booking will be confirmed
-              </li>
+              <li>If your dates are available, the booking will be confirmed</li>
             </ul>
           </Card>
-          <Button
-            onClick={() => setLocation("/")}
-            variant="outline"
-            className="mt-4"
-          >
-            Return to Home
-          </Button>
+          <div className="flex gap-3 justify-center">
+            <Button onClick={() => setLocation("/dashboard")} variant="outline">
+              Go to Dashboard
+            </Button>
+            <Button onClick={() => setLocation("/")}>Return to Home</Button>
+          </div>
         </div>
       </div>
     );
   }
 
   const calendarDays = generateCalendarDays();
+  const selectedPet = pets.find((p) => p.id === selectedPetId);
+  const serviceInfo = services.find((s) => s.type === selectedService);
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-40">
-        <div className="container h-16 flex items-center justify-between">
-          <button
-            onClick={() => setLocation("/")}
-            className="flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </button>
-          <div className="flex items-center gap-2">
-            <PawHeartLogo size={24} className="text-primary" />
-            <span className="font-serif font-bold hidden sm:inline">
-              Gentle Pawz
-            </span>
-          </div>
-          <div className="w-20" />
-        </div>
-      </header>
+      <TopNav />
 
       {/* Hero */}
-      <section className="bg-gradient-to-b from-primary/10 to-background py-12">
-        <div className="container max-w-3xl mx-auto text-center space-y-4">
+      <section className="bg-gradient-to-b from-primary/10 to-background py-10">
+        <div className="container max-w-3xl mx-auto text-center space-y-3">
           <div className="inline-flex items-center gap-2 bg-primary/10 text-primary rounded-full px-4 py-1.5 text-sm font-medium">
             <Dog className="w-4 h-4" />
             Boutique Dog Boarding — Max 2 Dogs at a Time
@@ -331,20 +378,204 @@ export default function BookingFlow() {
             Book a Stay for Your Pup
           </h1>
           <p className="text-foreground/60 max-w-xl mx-auto">
-            Pick your dates, tell us about your dog, and Emily will confirm
-            within 24 hours. No account needed.
+            Complete the steps below to request a booking. Emily will confirm
+            within 24 hours.
           </p>
         </div>
       </section>
 
-      {/* Main Content */}
-      <section className="container max-w-5xl mx-auto py-10">
-        <form onSubmit={handleSubmit} className="grid lg:grid-cols-5 gap-8">
-          {/* Calendar — Left Side (3 cols) */}
-          <div className="lg:col-span-3 space-y-4">
+      {/* Progress Steps */}
+      <section className="container max-w-3xl mx-auto pt-8 px-4">
+        <div className="flex items-center justify-between mb-8">
+          {[
+            { num: 1, label: "Service" },
+            { num: 2, label: "Pet" },
+            { num: 3, label: "Dates" },
+            { num: 4, label: "Review" },
+          ].map((s, idx) => (
+            <React.Fragment key={s.num}>
+              <div className="flex flex-col items-center gap-1">
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+                    step >= s.num
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {step > s.num ? (
+                    <CheckCircle className="w-5 h-5" />
+                  ) : (
+                    s.num
+                  )}
+                </div>
+                <span className="text-xs text-foreground/60 hidden sm:block">
+                  {s.label}
+                </span>
+              </div>
+              {idx < 3 && (
+                <div
+                  className={`flex-1 h-0.5 mx-2 transition-colors ${
+                    step > s.num ? "bg-primary" : "bg-muted"
+                  }`}
+                />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </section>
+
+      {/* Step Content */}
+      <section className="container max-w-3xl mx-auto pb-12 px-4">
+        {/* STEP 1: Select Service */}
+        {step === 1 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-serif font-bold flex items-center gap-2">
+              <DollarSign className="w-5 h-5 text-primary" />
+              Choose Your Service
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {services.map((service) => (
+                <Card
+                  key={service.type}
+                  className={`p-6 cursor-pointer transition-all hover:border-primary/50 ${
+                    selectedService === service.type
+                      ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                      : ""
+                  }`}
+                  onClick={() => setSelectedService(service.type)}
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                      {service.icon}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-serif font-bold text-lg">
+                        {service.label}
+                      </h3>
+                      <p className="text-sm text-foreground/60 mt-1">
+                        {service.description}
+                      </p>
+                      <p className="text-lg font-bold text-primary mt-3">
+                        ${service.price}
+                        <span className="text-sm font-normal text-foreground/60">
+                          /{service.unit}
+                        </span>
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+            <div className="flex justify-end pt-4">
+              <Button
+                onClick={() => setStep(2)}
+                disabled={!selectedService}
+                className="gap-2"
+              >
+                Next: Select Pet
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 2: Select Pet */}
+        {step === 2 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-serif font-bold flex items-center gap-2">
+              <PawPrint className="w-5 h-5 text-primary" />
+              Select Your Pet
+            </h2>
+
+            {loadingPets ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                <span className="ml-2 text-foreground/60">Loading pets...</span>
+              </div>
+            ) : pets.length === 0 ? (
+              <Card className="p-8 text-center">
+                <PawPrint className="w-12 h-12 text-primary/30 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No pets found</h3>
+                <p className="text-foreground/60 mb-4">
+                  You need to add a pet before booking.
+                </p>
+                <Button
+                  onClick={() => setLocation("/pets")}
+                  className="gap-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add a Pet
+                </Button>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {pets.map((pet) => (
+                  <Card
+                    key={pet.id}
+                    className={`p-5 cursor-pointer transition-all hover:border-primary/50 ${
+                      selectedPetId === pet.id
+                        ? "border-primary ring-2 ring-primary/20 bg-primary/5"
+                        : ""
+                    }`}
+                    onClick={() => setSelectedPetId(pet.id)}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Dog className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <h3 className="font-serif font-bold text-lg">
+                          {pet.name}
+                        </h3>
+                        <p className="text-sm text-foreground/60">
+                          {[pet.breed, pet.age].filter(Boolean).join(" • ")}
+                        </p>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {pets.length > 0 && (
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => setLocation("/pets")}
+                  className="text-sm text-primary hover:underline"
+                >
+                  + Add another pet
+                </button>
+              </div>
+            )}
+
+            <div className="flex justify-between pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setStep(1)}
+                className="gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </Button>
+              <Button
+                onClick={() => setStep(3)}
+                disabled={!selectedPetId}
+                className="gap-2"
+              >
+                Next: Pick Dates
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* STEP 3: Pick Dates */}
+        {step === 3 && (
+          <div className="space-y-4">
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold flex items-center gap-2">
+                <h2 className="text-lg font-serif font-bold flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-primary" />
                   Select Your Dates
                 </h2>
@@ -419,8 +650,7 @@ export default function BookingFlow() {
                     const fullyBooked = isFullyBooked(day);
                     const blocked = isBlocked(day);
                     const past = isPast(day);
-                    const isStart =
-                      startDate && isSameDay(day, startDate);
+                    const isStart = startDate && isSameDay(day, startDate);
                     const isEnd = endDate && isSameDay(day, endDate);
                     const inRange = isInRange(day);
                     const count = getBookingCount(day);
@@ -440,11 +670,9 @@ export default function BookingFlow() {
                       className +=
                         "bg-muted text-muted-foreground cursor-not-allowed line-through ";
                     } else if (past) {
-                      className +=
-                        "text-foreground/20 cursor-not-allowed ";
+                      className += "text-foreground/20 cursor-not-allowed ";
                     } else {
-                      className +=
-                        "hover:bg-primary/10 text-foreground ";
+                      className += "hover:bg-primary/10 text-foreground ";
                     }
 
                     return (
@@ -507,124 +735,126 @@ export default function BookingFlow() {
                       {format(startDate, "EEE, MMM d")} &rarr;{" "}
                       {format(endDate, "EEE, MMM d, yyyy")}
                       <span className="text-foreground/50 ml-2">
-                        (
-                        {Math.ceil(
-                          (endDate.getTime() - startDate.getTime()) /
-                            (1000 * 60 * 60 * 24)
-                        )}{" "}
-                        nights)
+                        ({calculateNights()}{" "}
+                        {selectedService === "daycare" ? "days" : "nights"})
                       </span>
                     </p>
                   ) : (
                     <p className="text-foreground/60">
                       <strong>Start:</strong>{" "}
                       {format(startDate, "EEE, MMM d")} — now select your
-                      pick-up date
+                      end date
                     </p>
                   )}
                 </div>
               )}
             </Card>
-          </div>
 
-          {/* Form — Right Side (2 cols) */}
-          <div className="lg:col-span-2 space-y-4">
-            <Card className="p-6 space-y-5">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <PawPrint className="w-5 h-5 text-primary" />
-                Your Details
-              </h2>
-
-              {/* Owner Name */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5 text-foreground/50" />
-                  Your Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={ownerName}
-                  onChange={(e) => setOwnerName(e.target.value)}
-                  placeholder="Jane Smith"
-                  required
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-              </div>
-
-              {/* Email */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium flex items-center gap-1.5">
-                  <Mail className="w-3.5 h-3.5 text-foreground/50" />
-                  Email Address <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="jane@example.com"
-                  required
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-              </div>
-
-              {/* Pet Name */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium flex items-center gap-1.5">
-                  <Dog className="w-3.5 h-3.5 text-foreground/50" />
-                  Dog's Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={petName}
-                  onChange={(e) => setPetName(e.target.value)}
-                  placeholder="Buddy"
-                  required
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-                />
-              </div>
-
-              {/* Care Notes */}
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-foreground/50" />
-                  Care Notes
-                </label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Feeding schedule, medications, temperament, special needs..."
-                  rows={4}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
-                />
-              </div>
-
-              {/* Submit */}
+            <div className="flex justify-between pt-4">
               <Button
-                type="submit"
-                className="w-full gap-2 py-5 text-base"
-                disabled={submitting || !startDate || !endDate}
+                variant="outline"
+                onClick={() => setStep(2)}
+                className="gap-2"
               >
-                {submitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Submitting...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4" />
-                    Request Booking
-                  </>
-                )}
+                <ArrowLeft className="w-4 h-4" />
+                Back
               </Button>
+              <Button
+                onClick={() => setStep(4)}
+                disabled={!startDate || !endDate}
+                className="gap-2"
+              >
+                Next: Review
+                <ArrowRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
 
-              {(!startDate || !endDate) && (
-                <p className="text-xs text-center text-foreground/40">
-                  Select your stay dates on the calendar first
-                </p>
-              )}
+        {/* STEP 4: Review & Submit */}
+        {step === 4 && (
+          <div className="space-y-4">
+            <h2 className="text-xl font-serif font-bold flex items-center gap-2">
+              <CheckCircle className="w-5 h-5 text-primary" />
+              Review Your Booking
+            </h2>
+
+            <Card className="p-6 space-y-4">
+              {/* Service */}
+              <div className="flex items-center justify-between py-3 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                    {serviceInfo?.icon}
+                  </div>
+                  <div>
+                    <p className="font-medium">{serviceInfo?.label}</p>
+                    <p className="text-sm text-foreground/60">
+                      ${serviceInfo?.price}/{serviceInfo?.unit}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Pet */}
+              <div className="flex items-center justify-between py-3 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Dog className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{selectedPet?.name}</p>
+                    <p className="text-sm text-foreground/60">
+                      {[selectedPet?.breed, selectedPet?.age]
+                        .filter(Boolean)
+                        .join(" • ")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dates */}
+              <div className="flex items-center justify-between py-3 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                    <Calendar className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium">
+                      {startDate && format(startDate, "MMM d")} &rarr;{" "}
+                      {endDate && format(endDate, "MMM d, yyyy")}
+                    </p>
+                    <p className="text-sm text-foreground/60">
+                      {calculateNights()}{" "}
+                      {selectedService === "daycare" ? "days" : "nights"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Total */}
+              <div className="flex items-center justify-between py-3">
+                <span className="text-lg font-serif font-bold">Total</span>
+                <span className="text-2xl font-bold text-primary">
+                  ${calculatePrice()}
+                </span>
+              </div>
             </Card>
 
-            {/* Info Card */}
+            {/* Notes */}
+            <Card className="p-6">
+              <label className="text-sm font-medium block mb-2">
+                Care Notes (optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Feeding schedule, medications, temperament, special needs..."
+                rows={3}
+                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-none"
+              />
+            </Card>
+
+            {/* Info */}
             <Card className="p-4 bg-muted/30 border-border/50">
               <div className="space-y-3 text-sm text-foreground/60">
                 <div className="flex items-start gap-2">
@@ -635,14 +865,38 @@ export default function BookingFlow() {
                   <Dog className="w-4 h-4 text-primary mt-0.5 shrink-0" />
                   <span>Maximum 2 dogs at a time for personal attention</span>
                 </div>
-                <div className="flex items-start gap-2">
-                  <CheckCircle className="w-4 h-4 text-primary mt-0.5 shrink-0" />
-                  <span>No account required — just fill in your details</span>
-                </div>
               </div>
             </Card>
+
+            <div className="flex justify-between pt-4">
+              <Button
+                variant="outline"
+                onClick={() => setStep(3)}
+                className="gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={submitting}
+                className="gap-2 px-6"
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Submitting...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4" />
+                    Submit Booking Request
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
-        </form>
+        )}
       </section>
     </div>
   );

@@ -9,13 +9,13 @@ import CustomerDashboard from "@/pages/CustomerDashboard";
 import WalkerDashboard from "@/pages/WalkerDashboard";
 import WalkerProfile from "@/pages/WalkerProfile";
 import BookingFlow from "@/pages/BookingFlow";
+import PetProfile from "@/pages/PetProfile";
+import Questionnaire from "@/pages/Questionnaire";
 import About from "@/pages/About";
 import Contact from "@/pages/Contact";
 import AdminDashboard from "@/pages/AdminDashboard";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
-import Services from "@/pages/Services";
-import Gallery from "@/pages/Gallery";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -33,10 +33,10 @@ function Router() {
       <Route path={"/walker-dashboard"} component={WalkerDashboard} />
       <Route path={"/walkers/:id"} component={WalkerProfile} />
       <Route path={"/booking"} component={BookingFlow} />
+      <Route path={"/pets"} component={PetProfile} />
+      <Route path={"/questionnaire"} component={Questionnaire} />
       <Route path={"/about"} component={About} />
       <Route path={"/contact"} component={Contact} />
-      <Route path={"/services"} component={Services} />
-      <Route path={"/gallery"} component={Gallery} />
       <Route path={"/admin"} component={AdminDashboard} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
