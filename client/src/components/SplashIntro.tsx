@@ -266,8 +266,8 @@ const SplashIntro: React.FC<SplashIntroProps> = ({ onComplete }) => {
         {/* Logo */}
         <div
           style={{
-            width: "clamp(110px, 28vw, 180px)",
-            height: "clamp(110px, 28vw, 180px)",
+            width: "min(75vh, 75vw)",
+            height: "min(75vh, 75vw)",
             borderRadius: "50%",
             overflow: "hidden",
             opacity: 0,
