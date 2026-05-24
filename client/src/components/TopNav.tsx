@@ -56,6 +56,20 @@ export default function TopNav() {
             Home
           </button>
 
+          <button
+            onClick={() => handleNavClick("/services")}
+            className="text-foreground/70 hover:text-foreground transition-colors"
+          >
+            Services
+          </button>
+
+          <button
+            onClick={() => handleNavClick("/gallery")}
+            className="text-foreground/70 hover:text-foreground transition-colors"
+          >
+            Gallery
+          </button>
+
           {/* Platform Dropdown */}
           <div className="relative group">
             <button className="flex items-center gap-1 text-foreground/70 hover:text-foreground transition-colors">
@@ -186,6 +200,18 @@ export default function TopNav() {
               className="block w-full text-left px-4 py-2 text-foreground/70 hover:text-foreground hover:bg-primary/10 rounded-lg transition-colors"
             >
               Home
+            </button>
+            <button
+              onClick={() => handleNavClick("/services")}
+              className="block w-full text-left px-4 py-2 text-foreground/70 hover:text-foreground hover:bg-primary/10 rounded-lg transition-colors"
+            >
+              Services
+            </button>
+            <button
+              onClick={() => handleNavClick("/gallery")}
+              className="block w-full text-left px-4 py-2 text-foreground/70 hover:text-foreground hover:bg-primary/10 rounded-lg transition-colors"
+            >
+              Gallery
             </button>
             <button
               onClick={() => handleNavClick("/booking")}

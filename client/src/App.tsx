@@ -14,6 +14,8 @@ import Contact from "@/pages/Contact";
 import AdminDashboard from "@/pages/AdminDashboard";
 import ForgotPassword from "@/pages/ForgotPassword";
 import ResetPassword from "@/pages/ResetPassword";
+import Services from "@/pages/Services";
+import Gallery from "@/pages/Gallery";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -33,6 +35,8 @@ function Router() {
       <Route path={"/booking"} component={BookingFlow} />
       <Route path={"/about"} component={About} />
       <Route path={"/contact"} component={Contact} />
+      <Route path={"/services"} component={Services} />
+      <Route path={"/gallery"} component={Gallery} />
       <Route path={"/admin"} component={AdminDashboard} />
       <Route path={"/404"} component={NotFound} />
       {/* Final fallback route */}
