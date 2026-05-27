@@ -1,14 +1,16 @@
-import { useState } from "react";
-import { useLocation } from "wouter";
+import React, { useState } from "react";
+import { MapPin, Phone, Mail, Clock, ExternalLink, Heart, Send, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { PawHeartLogo } from "@/components/PawHeartLogo";
-import { ArrowLeft, MapPin, Phone, Mail, Clock } from "lucide-react";
-import { toast } from "sonner";
+import TopNav from "@/components/TopNav";
+
+const GOOGLE_BUSINESS_URL = "https://maps.google.com/?q=Gentle+Pawz+North+Vancouver";
+const GOOGLE_PROFILE_URL = "https://business.google.com/n/4053690830842870116";
+
+// Replace YOUR_FORM_ID with your Formspree form ID (e.g., "xyzabcde")
+const FORMSPREE_ENDPOINT = "https://formspree.io/f/xqejgwvz";
 
 export default function Contact() {
-  const [, setLocation] = useLocation();
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -16,12 +18,12 @@ export default function Contact() {
     message: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitted, setIsSubmitted] = useState(false);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -29,226 +31,293 @@ export default function Contact() {
     setIsSubmitting(true);
 
     try {
-      // TODO: Call contact.submit tRPC mutation
-      toast.success("Message sent! We'll get back to you soon.");
-      setFormData({ name: "", email: "", phone: "", message: "" });
+      const response = await fetch(FORMSPREE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: formData.name,
+          email: formData.email,
+          phone: formData.phone,
+          message: formData.message,
+          _replyto: formData.email,
+          _subject: `New Contact Form Message from ${formData.name}`,
+        }),
+      });
+
+      if (response.ok) {
+        setIsSubmitted(true);
+        setFormData({ name: "", email: "", phone: "", message: "" });
+      } else {
+        alert("Something went wrong. Please try again or email us directly at Emily@Gentlepawz.ca");
+      }
     } catch (error) {
-      toast.error("Failed to send message. Please try again.");
+      alert("Something went wrong. Please try again or email us directly at Emily@Gentlepawz.ca");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b border-border bg-card sticky top-0 z-40">
-        <div className="container h-16 flex items-center justify-between">
-          <button
-            onClick={() => setLocation("/")}
-            className="flex items-center gap-2 text-foreground/60 hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back
-          </button>
-          <div className="flex items-center gap-2">
-            <PawHeartLogo size={24} className="text-primary" />
-            <span className="font-serif font-bold hidden sm:inline">
-              Gentle Pawz
+    <div className="min-h-screen bg-white">
+      <TopNav />
+
+      {/* Hero */}
+      <section className="pt-24 pb-12 bg-gradient-to-b from-cyan-50 to-white">
+        <div className="container text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-100 border border-cyan-200 mb-6">
+            <Heart className="w-4 h-4 text-cyan-600" />
+            <span className="text-sm font-medium text-cyan-700">
+              Get In Touch
             </span>
           </div>
-          <Button onClick={() => setLocation("/signup?role=customer")}>
-            Get Started
-          </Button>
+          <h1 className="text-4xl sm:text-5xl font-serif font-bold text-gray-900 mb-4">
+            Contact Us
+          </h1>
+          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
+            We'd love to hear from you! Whether you have questions about our services,
+            want to schedule a meet and greet, or just want to say hi — reach out anytime.
+          </p>
         </div>
-      </header>
+      </section>
 
-      {/* Main Content */}
-      <main className="container py-12">
-        <div className="max-w-4xl mx-auto space-y-12">
-          {/* Hero Section */}
-          <div className="text-center space-y-4">
-            <h1 className="text-5xl font-serif font-bold">Get in Touch</h1>
-            <p className="text-xl text-foreground/70">
-              Have questions? We'd love to hear from you. Reach out anytime.
-            </p>
+      {/* Contact Info Cards */}
+      <section className="py-12">
+        <div className="container">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm text-center hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 rounded-full bg-cyan-50 flex items-center justify-center mx-auto mb-4">
+                <MapPin className="w-6 h-6 text-cyan-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Location</h3>
+              <p className="text-gray-600 text-sm">
+                North Vancouver, BC<br />
+                Canada
+              </p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm text-center hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 rounded-full bg-cyan-50 flex items-center justify-center mx-auto mb-4">
+                <Phone className="w-6 h-6 text-cyan-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Phone</h3>
+              <a
+                href="tel:+17789980769"
+                className="text-cyan-600 hover:text-cyan-700 text-sm font-medium"
+              >
+                (778) 998-0769
+              </a>
+              <p className="text-gray-500 text-xs mt-1">Text or call anytime</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm text-center hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 rounded-full bg-cyan-50 flex items-center justify-center mx-auto mb-4">
+                <Mail className="w-6 h-6 text-cyan-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Email</h3>
+              <a
+                href="mailto:Emily@Gentlepawz.ca"
+                className="text-cyan-600 hover:text-cyan-700 text-sm font-medium"
+              >
+                Emily@Gentlepawz.ca
+              </a>
+              <p className="text-gray-500 text-xs mt-1">We respond within 24 hours</p>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm text-center hover:shadow-md transition-shadow">
+              <div className="w-12 h-12 rounded-full bg-cyan-50 flex items-center justify-center mx-auto mb-4">
+                <Clock className="w-6 h-6 text-cyan-600" />
+              </div>
+              <h3 className="font-semibold text-gray-900 mb-2">Hours</h3>
+              <p className="text-gray-600 text-sm">
+                Open Daily<br />
+                9:00 AM – 9:00 PM
+              </p>
+            </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Contact Info Cards */}
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <MapPin className="w-5 h-5 text-primary" />
-              </div>
-              <h3 className="font-semibold">Location</h3>
-              <p className="text-sm text-foreground/70">
-                North Vancouver, BC
-              </p>
-              <p className="text-xs text-foreground/50">
-                Serving the North Shore community
-              </p>
-            </Card>
+          {/* Contact Form & Map Grid */}
+          <div className="grid md:grid-cols-2 gap-8 mb-12">
+            {/* Left: Contact Form */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+              <h2 className="text-2xl font-serif font-bold text-gray-900 mb-6">
+                Send us a Message
+              </h2>
 
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Phone className="w-5 h-5 text-primary" />
-              </div>
-              <h3 className="font-semibold">Phone</h3>
-              <p className="text-sm text-foreground/70">
-                <a href="tel:+1-604-555-0123" className="hover:text-primary">
-                  (604) 555-0123
-                </a>
-              </p>
-              <p className="text-xs text-foreground/50">
-                Mon-Fri, 9am-6pm PT
-              </p>
-            </Card>
-
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Mail className="w-5 h-5 text-primary" />
-              </div>
-              <h3 className="font-semibold">Email</h3>
-              <p className="text-sm text-foreground/70">
-                <a
-                  href="mailto:hello@gentlepawz.ca"
-                  className="hover:text-primary"
-                >
-                  hello@gentlepawz.ca
-                </a>
-              </p>
-              <p className="text-xs text-foreground/50">
-                We respond within 24 hours
-              </p>
-            </Card>
-          </div>
-
-          {/* Business Hours */}
-          <Card className="p-8 bg-primary/5 border-primary/20">
-            <div className="flex items-start gap-4">
-              <Clock className="w-6 h-6 text-primary flex-shrink-0 mt-1" />
-              <div>
-                <h3 className="font-semibold mb-4">Business Hours</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-foreground/60">Monday - Friday</p>
-                    <p className="font-medium">9:00 AM - 6:00 PM</p>
+              {isSubmitted ? (
+                <div className="text-center py-8 space-y-4">
+                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                    <CheckCircle className="w-8 h-8 text-green-600" />
                   </div>
-                  <div>
-                    <p className="text-foreground/60">Saturday - Sunday</p>
-                    <p className="font-medium">10:00 AM - 4:00 PM</p>
-                  </div>
+                  <h3 className="text-xl font-semibold text-gray-900">Message Sent!</h3>
+                  <p className="text-gray-600">
+                    Thanks for reaching out! Emily will get back to you within 24 hours.
+                  </p>
+                  <Button
+                    onClick={() => setIsSubmitted(false)}
+                    variant="outline"
+                    className="mt-4 border-cyan-200 text-cyan-700 hover:bg-cyan-50"
+                  >
+                    Send Another Message
+                  </Button>
                 </div>
-                <p className="text-xs text-foreground/50 mt-4">
-                  Emergency bookings available. Contact us for details.
+              ) : (
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        Name *
+                      </label>
+                      <Input
+                        type="text"
+                        name="name"
+                        placeholder="Your name"
+                        value={formData.name}
+                        onChange={handleInputChange}
+                        required
+                        className="border-gray-200 focus:border-cyan-400 focus:ring-cyan-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                        Email *
+                      </label>
+                      <Input
+                        type="email"
+                        name="email"
+                        placeholder="your@email.com"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        required
+                        className="border-gray-200 focus:border-cyan-400 focus:ring-cyan-400"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Phone
+                    </label>
+                    <Input
+                      type="tel"
+                      name="phone"
+                      placeholder="(778) 555-0123"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      className="border-gray-200 focus:border-cyan-400 focus:ring-cyan-400"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Message *
+                    </label>
+                    <textarea
+                      name="message"
+                      placeholder="Tell us how we can help..."
+                      value={formData.message}
+                      onChange={handleInputChange}
+                      required
+                      rows={5}
+                      className="w-full p-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400 bg-white resize-none"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full bg-cyan-600 hover:bg-cyan-700 text-white h-11 shadow-lg shadow-cyan-200"
+                  >
+                    {isSubmitting ? (
+                      "Sending..."
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Send className="w-4 h-4" />
+                        Send Message
+                      </span>
+                    )}
+                  </Button>
+                </form>
+              )}
+            </div>
+
+            {/* Right: Map Embed */}
+            <div className="space-y-4">
+              <div className="rounded-2xl overflow-hidden border border-gray-200 shadow-sm h-[320px]">
+                <iframe
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2601.6!2d-123.009845!3d49.3151427!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x548671a4e8a67b5b%3A0x3847c8e1f0a1c5e7!2sNorth+Vancouver%2C+BC!5e0!3m2!1sen!2sca!4v1716500000000!5m2!1sen!2sca"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Gentle Pawz Location - North Vancouver"
+                />
+              </div>
+
+              {/* Google Business Links */}
+              <div className="bg-cyan-50 rounded-2xl border border-cyan-100 p-6">
+                <h3 className="font-semibold text-gray-900 mb-3">Find Us on Google</h3>
+                <p className="text-gray-600 text-sm mb-4">
+                  Check out our reviews, photos, and get directions.
                 </p>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <a
+                    href={GOOGLE_PROFILE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition-colors font-medium text-sm"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Google Profile
+                  </a>
+                  <a
+                    href={GOOGLE_BUSINESS_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-cyan-700 border border-cyan-200 rounded-lg hover:bg-cyan-50 transition-colors font-medium text-sm"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    Get Directions
+                  </a>
+                </div>
               </div>
             </div>
-          </Card>
-
-          {/* Contact Form */}
-          <div className="space-y-6">
-            <h2 className="text-2xl font-serif font-bold">Send us a Message</h2>
-
-            <Card className="p-8">
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Name *
-                    </label>
-                    <Input
-                      type="text"
-                      name="name"
-                      placeholder="Your name"
-                      value={formData.name}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      Email *
-                    </label>
-                    <Input
-                      type="email"
-                      name="email"
-                      placeholder="your@email.com"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Phone
-                  </label>
-                  <Input
-                    type="tel"
-                    name="phone"
-                    placeholder="(604) 555-0123"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">
-                    Message *
-                  </label>
-                  <textarea
-                    name="message"
-                    placeholder="Tell us how we can help..."
-                    value={formData.message}
-                    onChange={handleInputChange}
-                    required
-                    className="w-full p-3 border border-border rounded-lg min-h-32 focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  />
-                </div>
-
-                <Button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="w-full bg-primary hover:bg-primary/90 h-11"
-                >
-                  {isSubmitting ? "Sending..." : "Send Message"}
-                </Button>
-              </form>
-            </Card>
           </div>
 
-          {/* Map Section */}
-          <div className="space-y-6">
-            <h2 className="text-2xl font-serif font-bold">Find Us</h2>
-            <Card className="overflow-hidden h-96">
-              <iframe
-                src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2610.0988949816626!2d-123.07199!3d49.31997!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x548673cc3d8d8d8d%3A0x8d8d8d8d8d8d8d8d!2sNorth%20Vancouver%2C%20BC!5e0!3m2!1sen!2sca!4v1234567890"
-                width="100%"
-                height="100%"
-                style={{ border: 0 }}
-                allowFullScreen
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-              />
-            </Card>
+          {/* Schedule Section */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-8 md:p-10 text-center">
+            <h2 className="text-2xl font-serif font-bold text-gray-900 mb-4">
+              Ready to Book?
+            </h2>
+            <p className="text-gray-600 max-w-2xl mx-auto mb-6">
+              Schedule a meet and greet or book day care and boarding directly through our site.
+              We'd love to meet your pup!
+            </p>
+            <Button
+              size="lg"
+              onClick={() => window.location.href = "/booking"}
+              className="bg-cyan-600 hover:bg-cyan-700 text-white shadow-lg shadow-cyan-200"
+            >
+              Book an Appointment
+            </Button>
           </div>
         </div>
-      </main>
+      </section>
 
       {/* Footer */}
-      <footer className="bg-foreground text-background py-12 mt-12">
+      <footer className="bg-gray-900 text-white py-12 mt-12">
         <div className="container text-center">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <PawHeartLogo size={24} className="text-primary" />
-            <span className="font-serif font-bold">Gentle Pawz</span>
-          </div>
-          <p className="text-sm opacity-70">
+          <p className="font-serif font-bold text-lg mb-2">Gentle Pawz</p>
+          <p className="text-sm text-gray-400">
             Boutique dog care in North Vancouver, BC
           </p>
-          <p className="text-xs opacity-50 mt-4">
+          <div className="flex items-center justify-center gap-6 mt-4 text-sm text-gray-400">
+            <a href="tel:+17789980769" className="hover:text-white transition-colors">
+              (778) 998-0769
+            </a>
+            <a href="mailto:Emily@Gentlepawz.ca" className="hover:text-white transition-colors">
+              Emily@Gentlepawz.ca
+            </a>
+          </div>
+          <p className="text-xs text-gray-500 mt-6">
             &copy; 2026 Gentle Pawz. All rights reserved.
           </p>
         </div>
