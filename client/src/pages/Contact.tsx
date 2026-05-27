@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import TopNav from "@/components/TopNav";
 
-const GOOGLE_BUSINESS_URL = "https://maps.google.com/?q=Gentle+Pawz+North+Vancouver";
-const GOOGLE_PROFILE_URL = "https://business.google.com/n/4053690830842870116";
+const GOOGLE_BUSINESS_URL = "https://maps.app.goo.gl/TDakV7HqUu2MFyHU6?g_st=ac";
+const GOOGLE_PROFILE_URL = "https://maps.app.goo.gl/TDakV7HqUu2MFyHU6?g_st=ac";
 
 // Replace YOUR_FORM_ID with your Formspree form ID (e.g., "xyzabcde")
 const FORMSPREE_ENDPOINT = "https://formspree.io/f/xqejgwvz";
