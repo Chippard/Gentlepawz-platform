@@ -9,6 +9,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { PawHeartLogo } from "@/components/PawHeartLogo";
 import {
@@ -30,6 +32,7 @@ import {
   ChevronRight,
   Ban,
   Unlock,
+  CalendarRange,
 } from "lucide-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { toast } from "sonner";
@@ -43,6 +46,7 @@ import {
   eachDayOfInterval,
   isSameDay,
   isBefore,
+  isAfter,
   startOfDay,
   getDay,
 } from "date-fns";
@@ -97,6 +101,7 @@ interface EnrichedBooking {
   service_type: string | null;
   start_date: string | null;
   end_date: string | null;
+  dropoff_time: string | null;
   notes: string | null;
   status: string;
   price: number | null;
@@ -230,6 +235,12 @@ function BookingDetailModal({
                     {booking.end_date ? new Date(booking.end_date).toLocaleDateString() : "—"}
                   </p>
                 </div>
+                {booking.dropoff_time && (
+                  <div>
+                    <span className="text-foreground/60">Drop-off Time</span>
+                    <p className="font-medium">{booking.dropoff_time}</p>
+                  </div>
+                )}
                 {booking.price != null && (
                   <div>
                     <span className="text-foreground/60">Price</span>
@@ -395,6 +406,13 @@ function AdminCalendar({ bookings }: { bookings: EnrichedBooking[] }) {
   const [blockingDate, setBlockingDate] = useState(false);
   const [blockReason, setBlockReason] = useState("");
 
+  // Block Date Range state
+  const [rangeModalOpen, setRangeModalOpen] = useState(false);
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [rangeReason, setRangeReason] = useState("");
+  const [blockingRange, setBlockingRange] = useState(false);
+
   // Fetch availability data
   const fetchCalendarData = useCallback(async () => {
     setLoadingCalendar(true);
@@ -536,6 +554,48 @@ function AdminCalendar({ bookings }: { bookings: EnrichedBooking[] }) {
     }
   };
 
+  // Block Date Range handler
+  const handleBlockDateRange = async () => {
+    if (!rangeStart || !rangeEnd) {
+      toast.error("Please select both a start and end date.");
+      return;
+    }
+    const start = new Date(rangeStart);
+    const end = new Date(rangeEnd);
+    if (isAfter(start, end)) {
+      toast.error("Start date must be before or equal to end date.");
+      return;
+    }
+
+    setBlockingRange(true);
+    try {
+      const days = eachDayOfInterval({ start, end });
+      const rows = days.map((day) => ({
+        date: format(day, "yyyy-MM-dd"),
+        reason: rangeReason.trim() || null,
+      }));
+
+      const { error } = await supabase
+        .from("blocked_dates")
+        .upsert(rows, { onConflict: "date" });
+      if (error) throw error;
+
+      toast.success(
+        `Blocked ${days.length} day${days.length > 1 ? "s" : ""}: ${format(start, "MMM d")} – ${format(end, "MMM d, yyyy")}`
+      );
+      setRangeStart("");
+      setRangeEnd("");
+      setRangeReason("");
+      setRangeModalOpen(false);
+      await fetchCalendarData();
+    } catch (err: any) {
+      console.error("Failed to block date range:", err);
+      toast.error(`Failed to block range: ${err.message}`);
+    } finally {
+      setBlockingRange(false);
+    }
+  };
+
   // Get bookings for selected date
   const getBookingsForDate = (date: Date): EnrichedBooking[] => {
     const dateStr = format(date, "yyyy-MM-dd");
@@ -564,6 +624,19 @@ function AdminCalendar({ bookings }: { bookings: EnrichedBooking[] }) {
       {/* Calendar Grid */}
       <div className="lg:col-span-2">
         <Card className="p-6">
+          {/* Block Range Button + Month Navigation */}
+          <div className="flex items-center justify-between mb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2 text-red-700 border-red-200 hover:bg-red-50"
+              onClick={() => setRangeModalOpen(true)}
+            >
+              <CalendarRange className="w-4 h-4" />
+              Block Date Range
+            </Button>
+          </div>
+
           {/* Month Navigation */}
           <div className="flex items-center justify-between mb-6">
             <button
@@ -801,6 +874,88 @@ function AdminCalendar({ bookings }: { bookings: EnrichedBooking[] }) {
           )}
         </Card>
       </div>
+
+      {/* Block Date Range Modal */}
+      <Dialog open={rangeModalOpen} onOpenChange={setRangeModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarRange className="w-5 h-5 text-red-600" />
+              Block Date Range
+            </DialogTitle>
+            <DialogDescription>
+              Block multiple consecutive dates at once. Each day in the range will be
+              inserted into the blocked dates list.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Start Date</label>
+              <input
+                type="date"
+                value={rangeStart}
+                onChange={(e) => setRangeStart(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">End Date</label>
+              <input
+                type="date"
+                value={rangeEnd}
+                onChange={(e) => setRangeEnd(e.target.value)}
+                min={rangeStart || undefined}
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Reason (optional)</label>
+              <input
+                type="text"
+                value={rangeReason}
+                onChange={(e) => setRangeReason(e.target.value)}
+                placeholder="e.g., Holiday break, Vacation"
+                className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+              />
+            </div>
+            {rangeStart && rangeEnd && !isAfter(new Date(rangeStart), new Date(rangeEnd)) && (
+              <div className="text-xs text-foreground/60 bg-muted/50 px-3 py-2 rounded-lg">
+                This will block{" "}
+                <strong>
+                  {eachDayOfInterval({
+                    start: new Date(rangeStart),
+                    end: new Date(rangeEnd),
+                  }).length}
+                </strong>{" "}
+                day(s) from{" "}
+                {format(new Date(rangeStart), "MMM d, yyyy")} to{" "}
+                {format(new Date(rangeEnd), "MMM d, yyyy")}.
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setRangeModalOpen(false)}
+              disabled={blockingRange}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="gap-2 bg-red-600 hover:bg-red-700 text-white"
+              onClick={handleBlockDateRange}
+              disabled={blockingRange || !rangeStart || !rangeEnd}
+            >
+              {blockingRange ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Ban className="w-4 h-4" />
+              )}
+              Block Range
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -913,6 +1068,7 @@ export default function AdminDashboard() {
           service_type: b.service_type || null,
           start_date: b.start_date || null,
           end_date: b.end_date || null,
+          dropoff_time: b.dropoff_time || null,
           notes: b.notes || null,
           status: b.status || "pending",
           price: b.price ?? null,

@@ -22,6 +22,13 @@ import {
   DollarSign,
 } from "lucide-react";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   format,
   addMonths,
   startOfMonth,
@@ -35,6 +42,20 @@ import {
 } from "date-fns";
 
 const MAX_DOGS_PER_DAY = 2;
+
+// Generate 30-minute time slots from 9:00 AM to 9:00 PM
+const DROPOFF_TIME_OPTIONS: string[] = [];
+{
+  for (let h = 9; h <= 21; h++) {
+    for (let m = 0; m < 60; m += 30) {
+      if (h === 21 && m > 0) break; // stop at 9:00 PM
+      const hour12 = h > 12 ? h - 12 : h === 0 ? 12 : h;
+      const ampm = h >= 12 ? "PM" : "AM";
+      const minStr = m === 0 ? "00" : "30";
+      DROPOFF_TIME_OPTIONS.push(`${hour12}:${minStr} ${ampm}`);
+    }
+  }
+}
 
 interface BookedDate {
   date: Date;
@@ -103,6 +124,9 @@ export default function BookingFlow() {
   const [bookedDates, setBookedDates] = useState<BookedDate[]>([]);
   const [blockedDates, setBlockedDates] = useState<Date[]>([]);
   const [loadingAvailability, setLoadingAvailability] = useState(true);
+
+  // Step 3b: Drop-off time
+  const [dropoffTime, setDropoffTime] = useState<string>("");
 
   // Step 4: Notes
   const [notes, setNotes] = useState("");
@@ -293,6 +317,7 @@ export default function BookingFlow() {
         service_type: selectedService,
         start_date: format(startDate, "yyyy-MM-dd"),
         end_date: format(endDate, "yyyy-MM-dd"),
+        dropoff_time: dropoffTime || null,
         price: calculatePrice(),
         notes: notes.trim() || null,
         status: "pending",
@@ -753,6 +778,31 @@ export default function BookingFlow() {
                   )}
                 </div>
               )}
+
+              {/* Drop-off Time Picker */}
+              {startDate && endDate && (
+                <div className="mt-4 p-4 rounded-lg border border-border">
+                  <label className="text-sm font-medium flex items-center gap-2 mb-2">
+                    <Clock className="w-4 h-4 text-primary" />
+                    Drop-off Time
+                  </label>
+                  <p className="text-xs text-foreground/60 mb-3">
+                    What time would you like to drop off your pup on {format(startDate, "MMM d")}?
+                  </p>
+                  <Select value={dropoffTime} onValueChange={setDropoffTime}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a drop-off time" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DROPOFF_TIME_OPTIONS.map((time) => (
+                        <SelectItem key={time} value={time}>
+                          {time}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
             </Card>
 
             <div className="flex justify-between pt-4">
@@ -835,6 +885,23 @@ export default function BookingFlow() {
                   </div>
                 </div>
               </div>
+
+              {/* Drop-off Time */}
+              {dropoffTime && (
+                <div className="flex items-center justify-between py-3 border-b border-border">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Drop-off at {dropoffTime}</p>
+                      <p className="text-sm text-foreground/60">
+                        on {startDate && format(startDate, "EEE, MMM d")}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Total */}
               <div className="flex items-center justify-between py-3">
