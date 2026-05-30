@@ -15,6 +15,7 @@
 ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS owner_name TEXT;
 ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS pet_name TEXT;
+ALTER TABLE public.bookings ADD COLUMN IF NOT EXISTS pet_id UUID REFERENCES public.pets(id) ON DELETE SET NULL;
 
 -- ============================================================================
 -- STEP 2: MAKE customer_id AND walker_id NULLABLE
@@ -88,6 +89,7 @@ CREATE POLICY "Allow anonymous booking reads for availability" ON public.booking
 --   + owner_name TEXT (new column)
 --   + email TEXT (new column)
 --   + pet_name TEXT (new column)
+--   + pet_id UUID (new column, FK to pets.id, nullable)
 --   ~ customer_id: dropped NOT NULL
 --   ~ walker_id: dropped NOT NULL
 --   ~ service_type: added DEFAULT 'boarding'

@@ -286,15 +286,20 @@ export default function BookingFlow() {
 
     setSubmitting(true);
     try {
-      const service = services.find((s) => s.type === selectedService);
+      const selectedPet = pets.find((p) => p.id === selectedPetId);
       const { error } = await supabase.from("bookings").insert({
         customer_id: user.id,
+        pet_id: selectedPetId || null,
         service_type: selectedService,
         start_date: format(startDate, "yyyy-MM-dd"),
         end_date: format(endDate, "yyyy-MM-dd"),
         price: calculatePrice(),
         notes: notes.trim() || null,
         status: "pending",
+        // Denormalized fields for quick display in admin panel
+        owner_name: user.user_metadata?.full_name || user.email || null,
+        email: user.email || null,
+        pet_name: selectedPet?.name || null,
       });
 
       if (error) throw error;
