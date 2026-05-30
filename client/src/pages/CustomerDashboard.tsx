@@ -3,6 +3,32 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Calendar,
   PawPrint,
@@ -14,10 +40,13 @@ import {
   Loader2,
   Clock,
   Home,
+  Pencil,
+  X,
 } from "lucide-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { supabase } from "@/lib/supabase";
 import TopNav from "@/components/TopNav";
+import { toast } from "sonner";
 
 interface Pet {
   id: string;
@@ -41,7 +70,17 @@ interface Booking {
   price: number | null;
   pet_name: string | null;
   dropoff_time: string | null;
+  notes: string | null;
   created_at: string;
+}
+
+// 30-min increments 9am–9pm
+const TIME_OPTIONS: string[] = [];
+for (let h = 9; h <= 21; h++) {
+  const ampm = h < 12 ? "AM" : "PM";
+  const hour12 = h > 12 ? h - 12 : h;
+  TIME_OPTIONS.push(`${hour12}:00 ${ampm}`);
+  if (h < 21) TIME_OPTIONS.push(`${hour12}:30 ${ampm}`);
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -69,11 +108,21 @@ export default function CustomerDashboard() {
   const { user, loading: authLoading } = useSupabaseAuth();
 
   const [pets, setPets] = useState<Pet[]>([]);
-  const [questionnaires, setQuestionnaires] = useState<QuestionnaireRecord[]>(
-    []
-  );
+  const [questionnaires, setQuestionnaires] = useState<QuestionnaireRecord[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+
+  // Cancel confirmation state
+  const [cancelBookingId, setCancelBookingId] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  // Edit modal state
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [editStartDate, setEditStartDate] = useState("");
+  const [editEndDate, setEditEndDate] = useState("");
+  const [editDropoffTime, setEditDropoffTime] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -82,44 +131,108 @@ export default function CustomerDashboard() {
     }
   }, [authLoading, user, setLocation]);
 
+  const fetchAll = async () => {
+    if (!user) return;
+    setLoadingData(true);
+    try {
+      const [petsRes, questRes, bookingsRes] = await Promise.all([
+        supabase
+          .from("pets")
+          .select("id, name, breed, age")
+          .eq("owner_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("questionnaires")
+          .select("id, pet_id, created_at")
+          .eq("customer_id", user.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("bookings")
+          .select("*")
+          .eq("customer_id", user.id)
+          .order("start_date", { ascending: true }),
+      ]);
+
+      if (petsRes.error) console.error("Pets fetch error:", petsRes.error);
+      if (questRes.error) console.error("Questionnaires fetch error:", questRes.error);
+      if (bookingsRes.error) console.error("Bookings fetch error:", bookingsRes.error);
+      if (petsRes.data) setPets(petsRes.data);
+      if (questRes.data) setQuestionnaires(questRes.data);
+      if (bookingsRes.data) setBookings(bookingsRes.data);
+    } catch (err) {
+      console.error("Error fetching dashboard data:", err);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
   // Fetch all data
   useEffect(() => {
     if (!user) return;
-    const fetchAll = async () => {
-      setLoadingData(true);
-      try {
-        const [petsRes, questRes, bookingsRes] = await Promise.all([
-          supabase
-            .from("pets")
-            .select("id, name, breed, age")
-            .eq("owner_id", user.id)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("questionnaires")
-            .select("id, pet_id, created_at")
-            .eq("customer_id", user.id)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("bookings")
-            .select("*")
-            .eq("customer_id", user.id)
-            .order("start_date", { ascending: true }),
-        ]);
-
-        if (petsRes.error) console.error("Pets fetch error:", petsRes.error);
-        if (questRes.error) console.error("Questionnaires fetch error:", questRes.error);
-        if (bookingsRes.error) console.error("Bookings fetch error:", bookingsRes.error);
-        if (petsRes.data) setPets(petsRes.data);
-        if (questRes.data) setQuestionnaires(questRes.data);
-        if (bookingsRes.data) setBookings(bookingsRes.data);
-      } catch (err) {
-        console.error("Error fetching dashboard data:", err);
-      } finally {
-        setLoadingData(false);
-      }
-    };
     fetchAll();
   }, [user]);
+
+  // Cancel booking handler
+  const handleConfirmCancel = async () => {
+    if (!cancelBookingId) return;
+    setCancelling(true);
+    try {
+      const { error } = await supabase
+        .from("bookings")
+        .update({ status: "cancelled" })
+        .eq("id", cancelBookingId);
+      if (error) throw error;
+      toast.success("Booking cancelled.");
+      setCancelBookingId(null);
+      fetchAll();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to cancel booking");
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  // Open edit modal
+  const openEdit = (booking: Booking) => {
+    setEditingBooking(booking);
+    setEditStartDate(booking.start_date);
+    setEditEndDate(booking.end_date);
+    setEditDropoffTime(booking.dropoff_time || "");
+    setEditNotes(booking.notes || "");
+  };
+
+  // Save edit handler
+  const handleSaveEdit = async () => {
+    if (!editingBooking) return;
+    if (!editStartDate || !editEndDate) {
+      toast.error("Please select both start and end dates");
+      return;
+    }
+    if (editEndDate < editStartDate) {
+      toast.error("End date must be on or after start date");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase
+        .from("bookings")
+        .update({
+          start_date: editStartDate,
+          end_date: editEndDate,
+          dropoff_time: editDropoffTime || null,
+          notes: editNotes.trim() || null,
+        })
+        .eq("id", editingBooking.id);
+      if (error) throw error;
+      toast.success("Booking updated!");
+      setEditingBooking(null);
+      fetchAll();
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update booking");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // Derived data
   const today = new Date().toISOString().split("T")[0];
@@ -136,7 +249,6 @@ export default function CustomerDashboard() {
   const questCompletedCount = pets.filter((p) => petsWithQuestionnaire.has(p.id)).length;
   const questTotalCount = pets.length;
   const allQuestionnairesComplete = questTotalCount > 0 && questCompletedCount === questTotalCount;
-  const hasQuestionnaire = questCompletedCount > 0; // kept for backward compat
   const userName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
@@ -182,6 +294,112 @@ export default function CustomerDashboard() {
     <div className="min-h-screen bg-background">
       <TopNav />
 
+      {/* Cancel Confirmation Dialog */}
+      <AlertDialog
+        open={!!cancelBookingId}
+        onOpenChange={(open) => { if (!open) setCancelBookingId(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel this booking?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this booking? This action cannot be undone.
+              If you need to rebook, you can submit a new request.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelling}>Keep Booking</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmCancel}
+              disabled={cancelling}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {cancelling ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              Yes, Cancel Booking
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Edit Booking Dialog */}
+      <Dialog open={!!editingBooking} onOpenChange={(open) => { if (!open) setEditingBooking(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Booking</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {editingBooking && (
+              <p className="text-sm text-foreground/60">
+                Editing{" "}
+                <strong className="capitalize">
+                  {editingBooking.service_type}
+                </strong>
+                {editingBooking.pet_name && ` for ${editingBooking.pet_name}`}
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Start Date</label>
+                <Input
+                  type="date"
+                  value={editStartDate}
+                  min={today}
+                  onChange={(e) => setEditStartDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">End Date</label>
+                <Input
+                  type="date"
+                  value={editEndDate}
+                  min={editStartDate || today}
+                  onChange={(e) => setEditEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Drop-off Time</label>
+              <Select value={editDropoffTime} onValueChange={setEditDropoffTime}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a time (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {TIME_OPTIONS.map((t) => (
+                    <SelectItem key={t} value={t}>
+                      {t}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Notes</label>
+              <Textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Any special instructions or notes..."
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditingBooking(null)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleSaveEdit} disabled={saving} className="gap-2">
+              {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="container max-w-6xl mx-auto pt-24 pb-12 px-4 space-y-8">
         {/* Welcome Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -202,24 +420,24 @@ export default function CustomerDashboard() {
           </Button>
         </div>
 
-        {/* Status Cards */}
         {loadingData ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex items-center justify-center py-20">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Status Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Pets Card */}
               <Card className="p-5 hover:shadow-md transition-shadow">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <Dog className="w-5 h-5 text-primary" />
+                    <PawPrint className="w-5 h-5 text-primary" />
                   </div>
                   <div>
                     <p className="text-2xl font-bold">{pets.length}</p>
                     <p className="text-sm text-foreground/60">
-                      Pet{pets.length !== 1 ? "s" : ""} Registered
+                      {pets.length === 1 ? "Pet" : "Pets"}
                     </p>
                   </div>
                 </div>
@@ -232,12 +450,8 @@ export default function CustomerDashboard() {
                     <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold">
-                      {upcomingBookings.length}
-                    </p>
-                    <p className="text-sm text-foreground/60">
-                      Upcoming Booking{upcomingBookings.length !== 1 ? "s" : ""}
-                    </p>
+                    <p className="text-2xl font-bold">{upcomingBookings.length}</p>
+                    <p className="text-sm text-foreground/60">Upcoming</p>
                   </div>
                 </div>
               </Card>
@@ -321,37 +535,34 @@ export default function CustomerDashboard() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <button
                   onClick={() => setLocation("/booking")}
-                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all group"
+                  className="group flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/5 transition-all"
                 >
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <Calendar className="w-5 h-5 text-primary" />
                   </div>
                   <span className="text-sm font-medium">Book a Stay</span>
                 </button>
-
                 <button
                   onClick={() => setLocation("/pets")}
-                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all group"
+                  className="group flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/5 transition-all"
                 >
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <PawPrint className="w-5 h-5 text-primary" />
                   </div>
                   <span className="text-sm font-medium">My Pets</span>
                 </button>
-
                 <button
                   onClick={() => setLocation("/questionnaire")}
-                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all group"
+                  className="group flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/5 transition-all"
                 >
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <ClipboardList className="w-5 h-5 text-primary" />
                   </div>
                   <span className="text-sm font-medium">Questionnaire</span>
                 </button>
-
                 <button
                   onClick={() => setLocation("/")}
-                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all group"
+                  className="group flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:border-primary/30 hover:bg-primary/5 transition-all"
                 >
                   <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
                     <Home className="w-5 h-5 text-primary" />
@@ -401,7 +612,7 @@ export default function CustomerDashboard() {
                       key={booking.id}
                       className="p-5 hover:shadow-md transition-shadow"
                     >
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                         <div className="flex items-start gap-3">
                           <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
                             <PawPrint className="w-5 h-5 text-primary" />
@@ -417,17 +628,18 @@ export default function CustomerDashboard() {
                               )}
                             </h3>
                             <p className="text-sm text-foreground/60 mt-0.5">
-                              {new Date(
-                                booking.start_date
-                              ).toLocaleDateString()}{" "}
+                              {new Date(booking.start_date).toLocaleDateString()}{" "}
                               &rarr;{" "}
-                              {new Date(
-                                booking.end_date
-                              ).toLocaleDateString()}
+                              {new Date(booking.end_date).toLocaleDateString()}
                             </p>
                             {booking.dropoff_time && (
                               <p className="text-xs text-foreground/50 mt-0.5">
                                 Drop-off: {booking.dropoff_time}
+                              </p>
+                            )}
+                            {booking.notes && (
+                              <p className="text-xs text-foreground/50 mt-0.5 italic">
+                                "{booking.notes}"
                               </p>
                             )}
                             {booking.price != null && (
@@ -437,7 +649,32 @@ export default function CustomerDashboard() {
                             )}
                           </div>
                         </div>
-                        <StatusBadge status={booking.status} />
+                        <div className="flex items-center gap-2 sm:flex-col sm:items-end shrink-0">
+                          <StatusBadge status={booking.status} />
+                          {/* Edit and Cancel only for pending bookings */}
+                          {booking.status === "pending" && (
+                            <div className="flex gap-2 mt-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 h-8 text-xs"
+                                onClick={() => openEdit(booking)}
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                                Edit
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5 h-8 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-900/20"
+                                onClick={() => setCancelBookingId(booking.id)}
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                Cancel
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </Card>
                   ))}
@@ -466,13 +703,9 @@ export default function CustomerDashboard() {
                               {booking.pet_name && ` — ${booking.pet_name}`}
                             </p>
                             <p className="text-xs text-foreground/50">
-                              {new Date(
-                                booking.start_date
-                              ).toLocaleDateString()}{" "}
+                              {new Date(booking.start_date).toLocaleDateString()}{" "}
                               &rarr;{" "}
-                              {new Date(
-                                booking.end_date
-                              ).toLocaleDateString()}
+                              {new Date(booking.end_date).toLocaleDateString()}
                             </p>
                           </div>
                         </div>

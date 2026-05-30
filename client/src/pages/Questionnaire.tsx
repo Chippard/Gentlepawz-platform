@@ -24,6 +24,8 @@ import {
   Phone,
   Stethoscope,
   PawPrint,
+  CalendarDays,
+  LayoutDashboard,
 } from "lucide-react";
 
 interface Pet {
@@ -68,6 +70,8 @@ export default function Questionnaire() {
 
   // UI state
   const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [submittedPetName, setSubmittedPetName] = useState("");
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -165,8 +169,9 @@ export default function Questionnaire() {
       if (error) throw error;
 
       const petName = selectedPet?.name || "your pet";
-      toast.success(`Questionnaire for ${petName} submitted! Heading to your dashboard.`);
-      setLocation("/dashboard");
+      setSubmittedPetName(petName);
+      setSubmitted(true);
+      toast.success(`Questionnaire for ${petName} submitted!`);
     } catch (err: any) {
       console.error("Error submitting questionnaire:", err);
       toast.error(err.message || "Failed to submit questionnaire");
@@ -184,6 +189,52 @@ export default function Questionnaire() {
   }
 
   if (!user) return null;
+
+  // Success screen
+  if (submitted) {
+    return (
+      <div className="min-h-screen bg-background">
+        <TopNav />
+        <div className="container max-w-lg mx-auto pt-24 pb-12 text-center space-y-6 px-4">
+          <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto">
+            <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
+          </div>
+          <div className="space-y-2">
+            <h1 className="text-3xl font-serif font-bold">All Done!</h1>
+            <p className="text-foreground/60 text-lg">
+              The questionnaire for <strong>{submittedPetName}</strong> has been submitted.
+              Emily will review it before your pup's stay.
+            </p>
+          </div>
+          <Card className="p-5 bg-primary/5 border-primary/20 text-left space-y-2">
+            <p className="text-sm font-medium">What's next?</p>
+            <ul className="text-sm text-foreground/70 space-y-1 list-disc list-inside">
+              <li>Emily will review your answers personally</li>
+              <li>You can now request a booking for {submittedPetName}</li>
+              <li>Come back any time to update your info</li>
+            </ul>
+          </Card>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
+            <Button
+              onClick={() => setLocation("/booking")}
+              className="gap-2 flex-1 sm:flex-none"
+            >
+              <CalendarDays className="w-4 h-4" />
+              Book a Stay
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setLocation("/dashboard")}
+              className="gap-2 flex-1 sm:flex-none"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              Go to Dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
