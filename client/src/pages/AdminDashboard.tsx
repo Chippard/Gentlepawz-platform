@@ -21,16 +21,33 @@ import {
   CheckCircle,
   XCircle,
   Clock,
-  ExternalLink,
   Eye,
   Dog,
   User,
   ClipboardList,
   PawPrint,
+  ChevronLeft,
+  ChevronRight,
+  Ban,
+  Unlock,
 } from "lucide-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
+import {
+  format,
+  addMonths,
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameDay,
+  isBefore,
+  startOfDay,
+  getDay,
+} from "date-fns";
+
+const MAX_DOGS_PER_DAY = 2;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,6 +109,17 @@ interface EnrichedBooking {
   profile: UserProfile | null;
   pet: Pet | null;
   questionnaire: Questionnaire | null;
+}
+
+interface BookedDate {
+  date: Date;
+  count: number;
+}
+
+interface BlockedDate {
+  id: string;
+  date: string;
+  reason: string | null;
 }
 
 // ─── Helper: resolve display name / email / pet for a booking ────────────────
@@ -353,6 +381,427 @@ function BookingDetailModal({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ─── Admin Calendar Component ────────────────────────────────────────────────
+
+function AdminCalendar({ bookings }: { bookings: EnrichedBooking[] }) {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [bookedDates, setBookedDates] = useState<BookedDate[]>([]);
+  const [blockedDates, setBlockedDates] = useState<BlockedDate[]>([]);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [loadingCalendar, setLoadingCalendar] = useState(true);
+  const [blockingDate, setBlockingDate] = useState(false);
+  const [blockReason, setBlockReason] = useState("");
+
+  // Fetch availability data
+  const fetchCalendarData = useCallback(async () => {
+    setLoadingCalendar(true);
+    try {
+      // Count bookings per date from confirmed/pending bookings
+      const { data: rawBookings, error: bookingsError } = await supabase
+        .from("bookings")
+        .select("start_date, end_date, status")
+        .in("status", ["pending", "confirmed"]);
+
+      if (bookingsError) throw bookingsError;
+
+      const dateCounts: Record<string, number> = {};
+      (rawBookings || []).forEach((booking: any) => {
+        if (booking.start_date && booking.end_date) {
+          const start = new Date(booking.start_date);
+          const end = new Date(booking.end_date);
+          const days = eachDayOfInterval({ start, end });
+          days.forEach((day) => {
+            const key = format(day, "yyyy-MM-dd");
+            dateCounts[key] = (dateCounts[key] || 0) + 1;
+          });
+        }
+      });
+
+      const booked: BookedDate[] = Object.entries(dateCounts).map(
+        ([dateStr, count]) => ({
+          date: new Date(dateStr),
+          count,
+        })
+      );
+      setBookedDates(booked);
+
+      // Fetch blocked dates
+      try {
+        const { data: blocked } = await supabase
+          .from("blocked_dates")
+          .select("id, date, reason");
+        if (blocked) {
+          setBlockedDates(blocked as BlockedDate[]);
+        }
+      } catch {
+        // blocked_dates table may not exist yet
+      }
+    } catch (err) {
+      console.error("Failed to fetch calendar data:", err);
+      toast.error("Could not load calendar data.");
+    } finally {
+      setLoadingCalendar(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCalendarData();
+  }, [fetchCalendarData]);
+
+  // Calendar helpers
+  const getBookingCount = (date: Date) => {
+    const found = bookedDates.find((b) => isSameDay(b.date, date));
+    return found ? found.count : 0;
+  };
+
+  const isBlocked = (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    return blockedDates.some((b) => b.date === dateStr);
+  };
+
+  const getBlockedEntry = (date: Date) => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    return blockedDates.find((b) => b.date === dateStr);
+  };
+
+  const isPast = (date: Date) => {
+    return isBefore(date, startOfDay(new Date()));
+  };
+
+  const generateCalendarDays = () => {
+    const monthStart = startOfMonth(currentMonth);
+    const monthEnd = endOfMonth(currentMonth);
+    const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    const startDayOfWeek = getDay(monthStart);
+    const paddedDays: (Date | null)[] = Array(startDayOfWeek).fill(null);
+    paddedDays.push(...days);
+    return paddedDays;
+  };
+
+  // Get day cell color class
+  const getDayCellClass = (date: Date) => {
+    if (isBlocked(date)) {
+      return "bg-red-100 border-red-300 text-red-800";
+    }
+    const count = getBookingCount(date);
+    if (count >= MAX_DOGS_PER_DAY) {
+      return "bg-red-50 border-red-200 text-red-700";
+    }
+    if (count === 1) {
+      return "bg-yellow-50 border-yellow-200 text-yellow-800";
+    }
+    return "bg-green-50 border-green-200 text-green-800";
+  };
+
+  // Block/Unblock handlers
+  const handleBlockDate = async (date: Date) => {
+    setBlockingDate(true);
+    try {
+      const dateStr = format(date, "yyyy-MM-dd");
+      const { error } = await supabase
+        .from("blocked_dates")
+        .insert({ date: dateStr, reason: blockReason || null });
+      if (error) throw error;
+      toast.success(`Blocked ${format(date, "MMM d, yyyy")}`);
+      setBlockReason("");
+      await fetchCalendarData();
+    } catch (err: any) {
+      console.error("Failed to block date:", err);
+      toast.error(`Failed to block date: ${err.message}`);
+    } finally {
+      setBlockingDate(false);
+    }
+  };
+
+  const handleUnblockDate = async (date: Date) => {
+    setBlockingDate(true);
+    try {
+      const entry = getBlockedEntry(date);
+      if (!entry) return;
+      const { error } = await supabase
+        .from("blocked_dates")
+        .delete()
+        .eq("id", entry.id);
+      if (error) throw error;
+      toast.success(`Unblocked ${format(date, "MMM d, yyyy")}`);
+      await fetchCalendarData();
+    } catch (err: any) {
+      console.error("Failed to unblock date:", err);
+      toast.error(`Failed to unblock date: ${err.message}`);
+    } finally {
+      setBlockingDate(false);
+    }
+  };
+
+  // Get bookings for selected date
+  const getBookingsForDate = (date: Date): EnrichedBooking[] => {
+    const dateStr = format(date, "yyyy-MM-dd");
+    return bookings.filter((b) => {
+      if (!b.start_date || !b.end_date) return false;
+      if (b.status === "cancelled") return false;
+      const start = format(new Date(b.start_date), "yyyy-MM-dd");
+      const end = format(new Date(b.end_date), "yyyy-MM-dd");
+      return dateStr >= start && dateStr <= end;
+    });
+  };
+
+  const calendarDays = generateCalendarDays();
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  if (loadingCalendar) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid lg:grid-cols-3 gap-6">
+      {/* Calendar Grid */}
+      <div className="lg:col-span-2">
+        <Card className="p-6">
+          {/* Month Navigation */}
+          <div className="flex items-center justify-between mb-6">
+            <button
+              onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
+              className="p-2 hover:bg-primary/10 rounded-lg transition-colors"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-semibold">
+              {format(currentMonth, "MMMM yyyy")}
+            </h3>
+            <button
+              onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
+              className="p-2 hover:bg-primary/10 rounded-lg transition-colors"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Legend */}
+          <div className="flex flex-wrap gap-4 mb-4 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-green-200 border border-green-300" />
+              <span>Available</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-yellow-200 border border-yellow-300" />
+              <span>1 booking</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-red-100 border border-red-200" />
+              <span>Full (2 bookings)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded bg-red-200 border border-red-400" />
+              <span className="flex items-center gap-0.5">Blocked <Ban className="w-3 h-3" /></span>
+            </div>
+          </div>
+
+          {/* Day Headers */}
+          <div className="grid grid-cols-7 gap-1 mb-1">
+            {dayNames.map((day) => (
+              <div
+                key={day}
+                className="text-center text-xs font-medium text-foreground/60 py-2"
+              >
+                {day}
+              </div>
+            ))}
+          </div>
+
+          {/* Calendar Days */}
+          <div className="grid grid-cols-7 gap-1">
+            {calendarDays.map((date, idx) => {
+              if (!date) {
+                return <div key={`empty-${idx}`} className="aspect-square" />;
+              }
+
+              const count = getBookingCount(date);
+              const blocked = isBlocked(date);
+              const past = isPast(date);
+              const isSelected = selectedDate && isSameDay(date, selectedDate);
+              const isToday = isSameDay(date, new Date());
+
+              return (
+                <button
+                  key={format(date, "yyyy-MM-dd")}
+                  onClick={() => setSelectedDate(date)}
+                  className={`
+                    aspect-square rounded-lg border text-sm font-medium
+                    flex flex-col items-center justify-center gap-0.5
+                    transition-all relative
+                    ${past ? "opacity-40" : "hover:scale-105 hover:shadow-md cursor-pointer"}
+                    ${isSelected ? "ring-2 ring-primary ring-offset-1" : ""}
+                    ${isToday ? "ring-1 ring-primary/50" : ""}
+                    ${past ? "bg-gray-50 border-gray-200 text-gray-400" : getDayCellClass(date)}
+                  `}
+                >
+                  <span className="text-sm leading-none">{format(date, "d")}</span>
+                  {blocked && !past && (
+                    <Ban className="w-3.5 h-3.5 text-red-600 absolute top-0.5 right-0.5" />
+                  )}
+                  {!blocked && !past && count > 0 && (
+                    <span className="text-[10px] leading-none font-bold">
+                      {count}/{MAX_DOGS_PER_DAY}
+                    </span>
+                  )}
+                  {!blocked && !past && count === 0 && (
+                    <span className="text-[10px] leading-none opacity-60">open</span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
+      {/* Day Detail Panel */}
+      <div className="lg:col-span-1">
+        <Card className="p-6 sticky top-24">
+          {selectedDate ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">
+                  {format(selectedDate, "EEE, MMM d, yyyy")}
+                </h3>
+                <button
+                  onClick={() => setSelectedDate(null)}
+                  className="p-1 hover:bg-primary/10 rounded text-foreground/50"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Status summary */}
+              <div className="space-y-2">
+                {isBlocked(selectedDate) && (
+                  <div className="flex items-center gap-2 text-red-600 bg-red-50 px-3 py-2 rounded-lg">
+                    <Ban className="w-4 h-4" />
+                    <span className="text-sm font-medium">Date is BLOCKED</span>
+                  </div>
+                )}
+                <div className="text-sm text-foreground/70">
+                  Bookings: <span className="font-semibold">{getBookingCount(selectedDate)}</span> / {MAX_DOGS_PER_DAY}
+                </div>
+                {getBlockedEntry(selectedDate)?.reason && (
+                  <div className="text-sm text-foreground/60">
+                    Reason: <span className="italic">{getBlockedEntry(selectedDate)?.reason}</span>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Block/Unblock controls */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-foreground/70">Manage Date</h4>
+                {isBlocked(selectedDate) ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full gap-2 text-green-700 border-green-200 hover:bg-green-50"
+                    onClick={() => handleUnblockDate(selectedDate)}
+                    disabled={blockingDate}
+                  >
+                    {blockingDate ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Unlock className="w-4 h-4" />
+                    )}
+                    Unblock this date
+                  </Button>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      placeholder="Reason (optional)"
+                      value={blockReason}
+                      onChange={(e) => setBlockReason(e.target.value)}
+                      className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full gap-2 text-red-700 border-red-200 hover:bg-red-50"
+                      onClick={() => handleBlockDate(selectedDate)}
+                      disabled={blockingDate}
+                    >
+                      {blockingDate ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Ban className="w-4 h-4" />
+                      )}
+                      Block this date
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <Separator />
+
+              {/* Bookings for this date */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-foreground/70">
+                  Bookings on this day
+                </h4>
+                {(() => {
+                  const dayBookings = getBookingsForDate(selectedDate);
+                  if (dayBookings.length === 0) {
+                    return (
+                      <p className="text-sm text-foreground/50 italic">
+                        No bookings for this date.
+                      </p>
+                    );
+                  }
+                  return (
+                    <div className="space-y-2">
+                      {dayBookings.map((b) => (
+                        <div
+                          key={b.id}
+                          className="p-3 rounded-lg border border-border bg-card hover:bg-primary/5 transition-colors"
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium">
+                              {getDisplayName(b)}
+                            </span>
+                            <StatusBadge status={b.status} />
+                          </div>
+                          <div className="text-xs text-foreground/60 space-y-0.5">
+                            <div className="flex items-center gap-1">
+                              <Dog className="w-3 h-3" />
+                              {getDisplayPetName(b)}
+                            </div>
+                            <div>
+                              {b.start_date && format(new Date(b.start_date), "MMM d")}
+                              {b.end_date && ` – ${format(new Date(b.end_date), "MMM d")}`}
+                            </div>
+                            {b.service_type && (
+                              <div className="capitalize">{b.service_type}</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8 text-foreground/50">
+              <Calendar className="w-10 h-10 mx-auto mb-3 opacity-40" />
+              <p className="text-sm">Click a date to view details</p>
+              <p className="text-xs mt-1">and manage blocked dates</p>
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
   );
 }
 
@@ -741,14 +1190,12 @@ export default function AdminDashboard() {
               ) : bookings.length === 0 ? (
                 <Card className="p-8 text-center text-foreground/60">
                   <p className="mb-4">No bookings yet</p>
-                  <a
-                    href="https://gentlepawz-calendar-d73g.vercel.app/booking"
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => setActiveTab("calendar")}
                     className="text-primary hover:underline inline-flex items-center gap-1"
                   >
-                    Open Booking Calendar <ExternalLink className="w-4 h-4" />
-                  </a>
+                    Open Calendar <Calendar className="w-4 h-4" />
+                  </button>
                 </Card>
               ) : (
                 <Card className="overflow-hidden">
@@ -835,14 +1282,15 @@ export default function AdminDashboard() {
           <div className="space-y-8">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-serif font-bold">All Bookings</h2>
-              <a
-                href="https://gentlepawz-calendar-d73g.vercel.app/booking"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-primary hover:underline"
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setActiveTab("calendar")}
               >
-                Open Booking Calendar <ExternalLink className="w-4 h-4" />
-              </a>
+                <Calendar className="w-4 h-4" />
+                View Calendar
+              </Button>
             </div>
 
             {bookingsLoading ? (
@@ -879,27 +1327,16 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Calendar Tab */}
+        {/* Calendar Tab — Integrated Admin Calendar */}
         {activeTab === "calendar" && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-serif font-bold">Booking Calendar</h2>
-              <a
-                href="https://gentlepawz-calendar-d73g.vercel.app/booking"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
-              >
-                Open in New Tab <ExternalLink className="w-4 h-4" />
-              </a>
+              <p className="text-sm text-foreground/60">
+                Manage availability and view bookings by date
+              </p>
             </div>
-            <Card className="overflow-hidden">
-              <iframe
-                src="https://gentlepawz-calendar-d73g.vercel.app/booking"
-                className="w-full h-[700px] border-0"
-                title="Gentle Pawz Booking Calendar"
-              />
-            </Card>
+            <AdminCalendar bookings={bookings} />
           </div>
         )}
       </main>
