@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -27,6 +27,10 @@ import {
   Calendar as CalendarIcon,
   Heart,
   Shield,
+  CheckCircle,
+  AlertCircle,
+  ClipboardList,
+  LayoutDashboard,
 } from "lucide-react";
 
 interface Pet {
@@ -71,6 +75,9 @@ export default function PetProfile() {
   const [submitting, setSubmitting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
+  // Track which pet IDs have questionnaires
+  const [petsWithQuestionnaires, setPetsWithQuestionnaires] = useState<Set<string>>(new Set());
+
   // Redirect if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
@@ -95,7 +102,21 @@ export default function PetProfile() {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setPets(data || []);
+      const petList = data || [];
+      setPets(petList);
+
+      // Fetch questionnaire completion status for all pets
+      if (petList.length > 0) {
+        const petIds = petList.map((p: Pet) => p.id);
+        const { data: questData } = await supabase
+          .from("questionnaires")
+          .select("pet_id")
+          .in("pet_id", petIds);
+        if (questData) {
+          const completedIds = new Set(questData.map((q: { pet_id: string }) => q.pet_id));
+          setPetsWithQuestionnaires(completedIds);
+        }
+      }
     } catch (err: any) {
       console.error("Error fetching pets:", err);
       toast.error("Failed to load pets");
@@ -132,42 +153,33 @@ export default function PetProfile() {
         if (error) throw error;
         toast.success("Pet updated successfully!");
       } else {
-        // Create new pet
-        const { error } = await supabase.from("pets").insert({
-          owner_id: user.id,
-          name: formData.name.trim(),
-          breed: formData.breed.trim(),
-          age: formData.age.trim(),
-          weight: formData.weight.trim(),
-          spayed_neutered: formData.spayed_neutered,
-          shots_up_to_date: formData.shots_up_to_date,
-        });
+        // Create new pet — get the inserted ID back
+        const { data: insertedPets, error } = await supabase
+          .from("pets")
+          .insert({
+            owner_id: user.id,
+            name: formData.name.trim(),
+            breed: formData.breed.trim(),
+            age: formData.age.trim(),
+            weight: formData.weight.trim(),
+            spayed_neutered: formData.spayed_neutered,
+            shots_up_to_date: formData.shots_up_to_date,
+          })
+          .select("id")
+          .single();
 
         if (error) throw error;
 
-        // Check if customer already has a questionnaire on file
-        const { data: existingQuestionnaires, error: questError } = await supabase
-          .from("questionnaires")
-          .select("id")
-          .eq("customer_id", user.id)
-          .limit(1);
-
-        const hasQuestionnaire = !questError && existingQuestionnaires && existingQuestionnaires.length > 0;
+        const newPetId = insertedPets?.id;
 
         setFormData(emptyForm);
         setShowForm(false);
         setEditingId(null);
         setSubmitting(false);
 
-        if (!hasQuestionnaire) {
-          // First time: guide them to fill out the questionnaire
-          toast.success(`Pet added! Now tell us more about your care preferences`);
-          setLocation("/questionnaire");
-        } else {
-          // Already have a questionnaire: stay on pets page
-          toast.success("Pet added successfully!");
-          fetchPets();
-        }
+        // Always redirect to questionnaire for the specific new pet
+        toast.success(`Pet added! Now tell us more about ${formData.name.trim()}`);
+        setLocation(`/questionnaire?pet_id=${newPetId}`);
         return;
       }
 
@@ -411,87 +423,137 @@ export default function PetProfile() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {pets.map((pet) => (
-              <Card
-                key={pet.id}
-                className="p-6 hover:border-primary/30 transition-colors"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Dog className="w-6 h-6 text-primary" />
+            {pets.map((pet) => {
+              const hasQuestionnaire = petsWithQuestionnaires.has(pet.id);
+              return (
+                <Card
+                  key={pet.id}
+                  className="p-6 hover:border-primary/30 transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Dog className="w-6 h-6 text-primary" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-serif font-bold text-lg">
+                            {pet.name}
+                          </h3>
+                          {hasQuestionnaire ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+                              <CheckCircle className="w-3 h-3" />
+                              Questionnaire done
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                              <AlertCircle className="w-3 h-3" />
+                              Needs questionnaire
+                            </span>
+                          )}
+                        </div>
+                        {pet.breed && (
+                          <p className="text-sm text-foreground/60">
+                            {pet.breed}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-serif font-bold text-lg">
-                        {pet.name}
-                      </h3>
-                      {pet.breed && (
-                        <p className="text-sm text-foreground/60">
-                          {pet.breed}
-                        </p>
-                      )}
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleEdit(pet)}
+                        className="h-8 w-8"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(pet.id)}
+                        disabled={deletingId === pet.id}
+                        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
+                      >
+                        {deletingId === pet.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleEdit(pet)}
-                      className="h-8 w-8"
-                    >
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(pet.id)}
-                      disabled={deletingId === pet.id}
-                      className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
-                    >
-                      {deletingId === pet.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
 
-                {/* Pet Details */}
-                <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                  {pet.age && (
+                  {/* Pet Details */}
+                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+                    {pet.age && (
+                      <div className="flex items-center gap-2 text-foreground/70">
+                        <CalendarIcon className="w-3.5 h-3.5 text-primary/60" />
+                        <span>{pet.age}</span>
+                      </div>
+                    )}
+                    {pet.weight && (
+                      <div className="flex items-center gap-2 text-foreground/70">
+                        <Weight className="w-3.5 h-3.5 text-primary/60" />
+                        <span>{pet.weight}</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-2 text-foreground/70">
-                      <CalendarIcon className="w-3.5 h-3.5 text-primary/60" />
-                      <span>{pet.age}</span>
+                      <Heart className="w-3.5 h-3.5 text-primary/60" />
+                      <span>
+                        {pet.spayed_neutered
+                          ? "Spayed/Neutered"
+                          : "Not spayed/neutered"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-foreground/70">
+                      <Shield className="w-3.5 h-3.5 text-primary/60" />
+                      <span>
+                        {pet.shots_up_to_date
+                          ? "Shots current"
+                          : "Shots not current"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Fill Questionnaire CTA if not done */}
+                  {!hasQuestionnaire && (
+                    <div className="mt-4 pt-4 border-t border-border">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-2 border-amber-300 text-amber-700 hover:bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:hover:bg-amber-900/20"
+                        onClick={() => setLocation(`/questionnaire?pet_id=${pet.id}`)}
+                      >
+                        <ClipboardList className="w-4 h-4" />
+                        Fill Questionnaire for {pet.name}
+                      </Button>
                     </div>
                   )}
-                  {pet.weight && (
-                    <div className="flex items-center gap-2 text-foreground/70">
-                      <Weight className="w-3.5 h-3.5 text-primary/60" />
-                      <span>{pet.weight}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 text-foreground/70">
-                    <Heart className="w-3.5 h-3.5 text-primary/60" />
-                    <span>
-                      {pet.spayed_neutered
-                        ? "Spayed/Neutered"
-                        : "Not spayed/neutered"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-foreground/70">
-                    <Shield className="w-3.5 h-3.5 text-primary/60" />
-                    <span>
-                      {pet.shots_up_to_date
-                        ? "Shots current"
-                        : "Shots not current"}
-                    </span>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )}
+
+        {/* Always-visible navigation buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 mt-10 pt-8 border-t border-border">
+          <Button
+            onClick={() => setLocation("/booking")}
+            className="flex-1 gap-2 bg-primary hover:bg-primary/90"
+          >
+            <CalendarIcon className="w-4 h-4" />
+            Book a Stay
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => setLocation("/dashboard")}
+            className="flex-1 gap-2"
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            Go to Dashboard
+          </Button>
+        </div>
       </section>
     </div>
   );

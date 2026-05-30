@@ -28,7 +28,7 @@ interface Pet {
 
 interface QuestionnaireRecord {
   id: string;
-  pet_id: string;
+  pet_id: string | null;
   created_at: string;
 }
 
@@ -129,7 +129,14 @@ export default function CustomerDashboard() {
   const pastBookings = bookings.filter(
     (b) => b.end_date < today || b.status === "cancelled"
   );
-  const hasQuestionnaire = questionnaires.length > 0;
+  // Per-pet questionnaire completion
+  const petsWithQuestionnaire = new Set(
+    questionnaires.map((q) => q.pet_id).filter(Boolean)
+  );
+  const questCompletedCount = pets.filter((p) => petsWithQuestionnaire.has(p.id)).length;
+  const questTotalCount = pets.length;
+  const allQuestionnairesComplete = questTotalCount > 0 && questCompletedCount === questTotalCount;
+  const hasQuestionnaire = questCompletedCount > 0; // kept for backward compat
   const userName =
     user?.user_metadata?.full_name ||
     user?.user_metadata?.name ||
@@ -240,12 +247,14 @@ export default function CustomerDashboard() {
                 <div className="flex items-center gap-3">
                   <div
                     className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                      hasQuestionnaire
+                      allQuestionnairesComplete
                         ? "bg-green-100 dark:bg-green-900/30"
+                        : questCompletedCount > 0
+                        ? "bg-blue-100 dark:bg-blue-900/30"
                         : "bg-amber-100 dark:bg-amber-900/30"
                     }`}
                   >
-                    {hasQuestionnaire ? (
+                    {allQuestionnairesComplete ? (
                       <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
                     ) : (
                       <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
@@ -253,9 +262,11 @@ export default function CustomerDashboard() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold">
-                      {hasQuestionnaire ? "Completed" : "Not Done"}
+                      {questTotalCount === 0
+                        ? "No Pets Yet"
+                        : `${questCompletedCount}/${questTotalCount} Pets`}
                     </p>
-                    <p className="text-sm text-foreground/60">Questionnaire</p>
+                    <p className="text-sm text-foreground/60">Questionnaires</p>
                   </div>
                 </div>
               </Card>
@@ -275,18 +286,19 @@ export default function CustomerDashboard() {
             </div>
 
             {/* Questionnaire CTA if not completed */}
-            {!hasQuestionnaire && (
+            {!allQuestionnairesComplete && questTotalCount > 0 && (
               <Card className="p-5 border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10">
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
                   <div className="flex items-center gap-3 flex-1">
                     <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
                     <div>
                       <p className="font-medium text-amber-800 dark:text-amber-300">
-                        Complete Your Questionnaire
+                        {questCompletedCount === 0
+                          ? "Complete Your Questionnaires"
+                          : `${questTotalCount - questCompletedCount} pet${questTotalCount - questCompletedCount > 1 ? "s" : ""} still need a questionnaire`}
                       </p>
                       <p className="text-sm text-amber-700/70 dark:text-amber-400/70">
-                        Help us understand your pup better so we can provide the
-                        best care.
+                        Each pet needs their own questionnaire so we can provide the best care.
                       </p>
                     </div>
                   </div>

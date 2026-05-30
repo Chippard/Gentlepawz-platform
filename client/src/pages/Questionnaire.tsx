@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react";
+import { useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -36,14 +36,20 @@ interface Pet {
 
 export default function Questionnaire() {
   const [, setLocation] = useLocation();
+  const search = useSearch();
   const { user, loading: authLoading } = useSupabaseAuth();
+
+  // Parse pet_id from query string (?pet_id=xxx)
+  const params = new URLSearchParams(search);
+  const petIdParam = params.get("pet_id") || "";
 
   // Pets
   const [pets, setPets] = useState<Pet[]>([]);
+  const [petsWithQuestionnaires, setPetsWithQuestionnaires] = useState<Set<string>>(new Set());
   const [loadingPets, setLoadingPets] = useState(true);
 
   // Form state
-  const [selectedPetId, setSelectedPetId] = useState("");
+  const [selectedPetId, setSelectedPetId] = useState(petIdParam);
   const [emergencyContact, setEmergencyContact] = useState("");
   const [vetContact, setVetContact] = useState("");
   const [allergiesMedsFeeding, setAllergiesMedsFeeding] = useState("");
@@ -70,7 +76,7 @@ export default function Questionnaire() {
     }
   }, [authLoading, user, setLocation]);
 
-  // Fetch pets
+  // Fetch pets and their questionnaire completion status
   useEffect(() => {
     if (!user) return;
     const fetchPets = async () => {
@@ -83,7 +89,21 @@ export default function Questionnaire() {
           .order("created_at", { ascending: false });
 
         if (error) throw error;
-        setPets(data || []);
+        const petList = data || [];
+        setPets(petList);
+
+        // Find which pets already have questionnaires
+        if (petList.length > 0) {
+          const petIds = petList.map((p: Pet) => p.id);
+          const { data: questData } = await supabase
+            .from("questionnaires")
+            .select("pet_id")
+            .in("pet_id", petIds);
+          if (questData) {
+            const completedIds = new Set(questData.map((q: { pet_id: string }) => q.pet_id));
+            setPetsWithQuestionnaires(completedIds);
+          }
+        }
       } catch (err: any) {
         console.error("Error fetching pets:", err);
         toast.error("Failed to load pets");
@@ -94,8 +114,18 @@ export default function Questionnaire() {
     fetchPets();
   }, [user]);
 
-  // Get selected pet details for pre-fill info
+  // If petIdParam is set and selectedPetId hasn't been set yet, set it once pets load
+  useEffect(() => {
+    if (petIdParam && !selectedPetId) {
+      setSelectedPetId(petIdParam);
+    }
+  }, [petIdParam]);
+
+  // Get selected pet details
   const selectedPet = pets.find((p) => p.id === selectedPetId);
+
+  // Pets that still need questionnaires (for the selector when no pet_id param)
+  const petsNeedingQuestionnaire = pets.filter((p) => !petsWithQuestionnaires.has(p.id));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -133,8 +163,9 @@ export default function Questionnaire() {
       });
 
       if (error) throw error;
-      toast.success("Questionnaire submitted! Heading to your dashboard.");
-      // Redirect to customer dashboard after successful submission
+
+      const petName = selectedPet?.name || "your pet";
+      toast.success(`Questionnaire for ${petName} submitted! Heading to your dashboard.`);
       setLocation("/dashboard");
     } catch (err: any) {
       console.error("Error submitting questionnaire:", err);
@@ -154,7 +185,6 @@ export default function Questionnaire() {
 
   if (!user) return null;
 
-
   return (
     <div className="min-h-screen bg-background">
       <TopNav />
@@ -166,13 +196,27 @@ export default function Questionnaire() {
             <ClipboardList className="w-4 h-4" />
             New Client Questionnaire
           </div>
-          <h1 className="text-3xl md:text-4xl font-serif font-bold">
-            Tell Us About Your Pup
-          </h1>
-          <p className="text-foreground/60 max-w-lg mx-auto">
-            Help us understand your dog's personality, needs, and preferences so
-            we can provide personalized care during their stay.
-          </p>
+          {selectedPet ? (
+            <>
+              <h1 className="text-3xl md:text-4xl font-serif font-bold">
+                Tell Us About {selectedPet.name}
+              </h1>
+              <p className="text-foreground/60 max-w-lg mx-auto">
+                Help us understand {selectedPet.name}'s personality, needs, and preferences so
+                we can provide personalized care during their stay.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-3xl md:text-4xl font-serif font-bold">
+                Tell Us About Your Pup
+              </h1>
+              <p className="text-foreground/60 max-w-lg mx-auto">
+                Help us understand your dog's personality, needs, and preferences so
+                we can provide personalized care during their stay.
+              </p>
+            </>
+          )}
         </div>
       </section>
 
@@ -199,7 +243,7 @@ export default function Questionnaire() {
             {/* Select Pet */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">
-                Dog/Cat's Name <span className="text-red-500">*</span>
+                Which pet is this questionnaire for? <span className="text-red-500">*</span>
               </label>
               {loadingPets ? (
                 <div className="flex items-center gap-2 text-sm text-foreground/60">
@@ -222,19 +266,60 @@ export default function Questionnaire() {
                     </span>
                   </div>
                 </div>
+              ) : petIdParam && selectedPet ? (
+                // Pre-selected pet from URL param — show read-only
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20">
+                  <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Dog className="w-4 h-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="font-medium">{selectedPet.name}</p>
+                    {selectedPet.age && (
+                      <p className="text-xs text-foreground/60">{selectedPet.age}</p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setLocation("/questionnaire")}
+                    className="ml-auto text-xs text-primary hover:underline"
+                  >
+                    Change pet
+                  </button>
+                </div>
               ) : (
-                <Select value={selectedPetId} onValueChange={setSelectedPetId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select your pet" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {pets.map((pet) => (
-                      <SelectItem key={pet.id} value={pet.id}>
-                        {pet.name} {pet.age ? `(${pet.age})` : ""}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                // No pet_id param — show selector filtered to pets needing questionnaires
+                <>
+                  {petsNeedingQuestionnaire.length === 0 ? (
+                    <div className="p-4 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                      <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+                        <CheckCircle className="w-4 h-4" />
+                        <span className="text-sm font-medium">
+                          All your pets already have questionnaires on file!{" "}
+                          <button
+                            type="button"
+                            onClick={() => setLocation("/dashboard")}
+                            className="underline hover:no-underline"
+                          >
+                            Go to dashboard
+                          </button>
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <Select value={selectedPetId} onValueChange={setSelectedPetId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select a pet" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {petsNeedingQuestionnaire.map((pet) => (
+                          <SelectItem key={pet.id} value={pet.id}>
+                            {pet.name} {pet.age ? `(${pet.age})` : ""}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </>
               )}
             </div>
 
@@ -501,6 +586,7 @@ export default function Questionnaire() {
                 <>
                   <CheckCircle className="w-4 h-4" />
                   Submit Questionnaire
+                  {selectedPet ? ` for ${selectedPet.name}` : ""}
                 </>
               )}
             </Button>
