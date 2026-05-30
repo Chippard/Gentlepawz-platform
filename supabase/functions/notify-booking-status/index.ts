@@ -16,10 +16,32 @@ interface StatusPayload {
   service_type: string;
   start_date: string;
   end_date: string;
+  dropoff_time: string | null;
   status: "confirmed" | "cancelled";
 }
 
+/**
+ * Format a date string (ISO or yyyy-MM-dd) as "July 15, 2026".
+ * Handles both "2026-07-15" and "2026-07-15T00:00:00+00:00" formats.
+ */
+function formatDate(dateStr: string): string {
+  if (!dateStr) return dateStr;
+  // Strip time component if present, then parse as local date to avoid
+  // timezone-shift issues (e.g. "2026-07-15T00:00:00+00:00" → "2026-07-15")
+  const datePart = dateStr.split("T")[0];
+  const [year, month, day] = datePart.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 function buildConfirmedHtml(payload: StatusPayload): string {
+  const startFormatted = formatDate(payload.start_date);
+  const endFormatted = formatDate(payload.end_date);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -49,7 +71,7 @@ function buildConfirmedHtml(payload: StatusPayload): string {
               <p style="margin:0 0 20px;color:#333;font-size:16px;line-height:1.6;">
                 Hi ${payload.customer_name}! Great news — your booking has been confirmed! 🎉
               </p>
-              
+
               <!-- Success Badge -->
               <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
                 <tr>
@@ -66,7 +88,7 @@ function buildConfirmedHtml(payload: StatusPayload): string {
                   <td style="padding:24px;">
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Pet</td>
+                        <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;width:40%;">Pet</td>
                         <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">🐕 ${payload.pet_name}</td>
                       </tr>
                       <tr>
@@ -75,19 +97,25 @@ function buildConfirmedHtml(payload: StatusPayload): string {
                       </tr>
                       <tr>
                         <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Start Date</td>
-                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${payload.start_date}</td>
+                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${startFormatted}</td>
                       </tr>
                       <tr>
                         <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">End Date</td>
-                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${payload.end_date}</td>
+                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${endFormatted}</td>
                       </tr>
+                      ${payload.dropoff_time ? `
+                      <tr>
+                        <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Drop-off Time</td>
+                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">🕐 ${payload.dropoff_time}</td>
+                      </tr>
+                      ` : ""}
                     </table>
                   </td>
                 </tr>
               </table>
 
               <p style="margin:0 0 8px;color:#333;font-size:16px;line-height:1.6;font-weight:500;">
-                Your booking has been confirmed! See you on ${payload.start_date}! 🐾
+                Your booking has been confirmed! See you on ${startFormatted}! 🐾
               </p>
               <p style="margin:0;color:#666;font-size:14px;line-height:1.6;">
                 If you have any questions or need to make changes, feel free to reach out to us at
@@ -115,6 +143,9 @@ function buildConfirmedHtml(payload: StatusPayload): string {
 }
 
 function buildCancelledHtml(payload: StatusPayload): string {
+  const startFormatted = formatDate(payload.start_date);
+  const endFormatted = formatDate(payload.end_date);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -161,7 +192,7 @@ function buildCancelledHtml(payload: StatusPayload): string {
                   <td style="padding:24px;">
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Pet</td>
+                        <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;width:40%;">Pet</td>
                         <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">🐕 ${payload.pet_name}</td>
                       </tr>
                       <tr>
@@ -170,8 +201,14 @@ function buildCancelledHtml(payload: StatusPayload): string {
                       </tr>
                       <tr>
                         <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Requested Dates</td>
-                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${payload.start_date} — ${payload.end_date}</td>
+                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${startFormatted} — ${endFormatted}</td>
                       </tr>
+                      ${payload.dropoff_time ? `
+                      <tr>
+                        <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Drop-off Time</td>
+                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">🕐 ${payload.dropoff_time}</td>
+                      </tr>
+                      ` : ""}
                     </table>
                   </td>
                 </tr>
@@ -234,9 +271,12 @@ serve(async (req) => {
       ? buildConfirmedHtml(payload)
       : buildCancelledHtml(payload);
 
+    const startFormatted = formatDate(payload.start_date);
+    const endFormatted = formatDate(payload.end_date);
+
     const subject = payload.status === "confirmed"
-      ? `✅ Booking Confirmed — ${payload.pet_name} (${payload.start_date} to ${payload.end_date})`
-      : `Booking Update — ${payload.pet_name} (${payload.start_date} to ${payload.end_date})`;
+      ? `✅ Booking Confirmed — ${payload.pet_name} (${startFormatted} to ${endFormatted})`
+      : `Booking Update — ${payload.pet_name} (${startFormatted} to ${endFormatted})`;
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",

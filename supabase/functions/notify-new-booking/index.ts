@@ -21,7 +21,28 @@ interface BookingPayload {
   notes: string | null;
 }
 
+/**
+ * Format a date string (ISO or yyyy-MM-dd) as "July 15, 2026".
+ * Handles both "2026-07-15" and "2026-07-15T00:00:00+00:00" formats.
+ */
+function formatDate(dateStr: string): string {
+  if (!dateStr) return dateStr;
+  // Strip time component if present, then parse as local date to avoid
+  // timezone-shift issues (e.g. "2026-07-15T00:00:00+00:00" → "2026-07-15")
+  const datePart = dateStr.split("T")[0];
+  const [year, month, day] = datePart.split("-").map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 function buildEmailHtml(booking: BookingPayload): string {
+  const startFormatted = formatDate(booking.start_date);
+  const endFormatted = formatDate(booking.end_date);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -51,13 +72,13 @@ function buildEmailHtml(booking: BookingPayload): string {
               <p style="margin:0 0 20px;color:#333;font-size:16px;line-height:1.6;">
                 Hi Emily! A new booking request has been submitted. Here are the details:
               </p>
-              
+
               <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#faf8f5;border-radius:12px;border:1px solid #e8e2da;margin-bottom:24px;">
                 <tr>
                   <td style="padding:24px;">
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Customer</td>
+                        <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;width:40%;">Customer</td>
                         <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${booking.customer_name}</td>
                       </tr>
                       <tr>
@@ -76,16 +97,16 @@ function buildEmailHtml(booking: BookingPayload): string {
                       </tr>
                       <tr>
                         <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Start Date</td>
-                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${booking.start_date}</td>
+                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${startFormatted}</td>
                       </tr>
                       <tr>
                         <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">End Date</td>
-                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${booking.end_date}</td>
+                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${endFormatted}</td>
                       </tr>
                       ${booking.dropoff_time ? `
                       <tr>
                         <td style="padding:8px 0;color:#666;font-size:13px;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;">Drop-off Time</td>
-                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">${booking.dropoff_time}</td>
+                        <td style="padding:8px 0;color:#333;font-size:15px;font-weight:500;">🕐 ${booking.dropoff_time}</td>
                       </tr>
                       ` : ""}
                       ${booking.notes ? `
@@ -145,6 +166,8 @@ serve(async (req) => {
     }
 
     const html = buildEmailHtml(booking);
+    const startFormatted = formatDate(booking.start_date);
+    const endFormatted = formatDate(booking.end_date);
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -155,7 +178,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: `Gentle Pawz Bookings <${FROM_EMAIL}>`,
         to: [ADMIN_EMAIL],
-        subject: `🐾 New Booking: ${booking.pet_name} — ${booking.service_type} (${booking.start_date} to ${booking.end_date})`,
+        subject: `🐾 New Booking: ${booking.pet_name} — ${booking.service_type} (${startFormatted} to ${endFormatted})`,
         html,
       }),
     });

@@ -1136,6 +1136,7 @@ export default function AdminDashboard() {
                   service_type: booking.service_type || "boarding",
                   start_date: booking.start_date || "",
                   end_date: booking.end_date || "",
+                  dropoff_time: booking.dropoff_time || null,
                   status: newStatus,
                 },
               });
