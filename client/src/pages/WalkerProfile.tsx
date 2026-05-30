@@ -310,7 +310,13 @@ export default function WalkerProfile() {
                 <Heart className="w-4 h-4 mr-2" />
                 Book Emily
               </Button>
-              <Button variant="outline" className="w-full h-11">
+              <Button
+                variant="outline"
+                className="w-full h-11"
+                onClick={() => {
+                  window.location.href = "mailto:emily@gentlepawz.ca?subject=Message via Gentle Pawz";
+                }}
+              >
                 <MessageCircle className="w-4 h-4 mr-2" />
                 Message
               </Button>
