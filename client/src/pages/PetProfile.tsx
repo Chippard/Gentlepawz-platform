@@ -144,7 +144,14 @@ export default function PetProfile() {
         });
 
         if (error) throw error;
-        toast.success("Pet added successfully!");
+        toast.success(`Pet added! Now tell us more about ${formData.name.trim()}`);
+        // Redirect to questionnaire after creating a new pet
+        setFormData(emptyForm);
+        setShowForm(false);
+        setEditingId(null);
+        setSubmitting(false);
+        setLocation("/questionnaire");
+        return;
       }
 
       setFormData(emptyForm);

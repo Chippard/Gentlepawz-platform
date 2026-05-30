@@ -62,7 +62,6 @@ export default function Questionnaire() {
 
   // UI state
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -134,8 +133,9 @@ export default function Questionnaire() {
       });
 
       if (error) throw error;
-      setSubmitted(true);
-      toast.success("Questionnaire submitted successfully!");
+      toast.success("Questionnaire submitted! Heading to your dashboard.");
+      // Redirect to customer dashboard after successful submission
+      setLocation("/dashboard");
     } catch (err: any) {
       console.error("Error submitting questionnaire:", err);
       toast.error(err.message || "Failed to submit questionnaire");
@@ -154,35 +154,6 @@ export default function Questionnaire() {
 
   if (!user) return null;
 
-  // Success screen
-  if (submitted) {
-    return (
-      <div className="min-h-screen bg-background">
-        <TopNav />
-        <div className="container max-w-lg mx-auto py-20 text-center space-y-6">
-          <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto">
-            <CheckCircle className="w-10 h-10 text-green-600 dark:text-green-400" />
-          </div>
-          <h1 className="text-3xl font-serif font-bold">
-            Questionnaire Submitted!
-          </h1>
-          <p className="text-foreground/60 text-lg">
-            Thank you for completing the questionnaire for{" "}
-            <strong>{selectedPet?.name}</strong>. This helps us provide the best
-            possible care.
-          </p>
-          <div className="flex gap-3 justify-center">
-            <Button onClick={() => setLocation("/dashboard")} variant="outline">
-              Go to Dashboard
-            </Button>
-            <Button onClick={() => setLocation("/booking")}>
-              Book a Stay
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-background">

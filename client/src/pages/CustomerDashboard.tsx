@@ -2,26 +2,24 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { PawHeartLogo } from "@/components/PawHeartLogo";
+import { Separator } from "@/components/ui/separator";
 import {
   Calendar,
-  MessageCircle,
-  History,
-  Star,
   LogOut,
-  Menu,
-  X,
   PawPrint,
   ClipboardList,
   Dog,
   CheckCircle,
   AlertCircle,
   ArrowRight,
+  Loader2,
+  Clock,
+  Home,
 } from "lucide-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
-import { useBookings, useMessages } from "@/hooks/useSupabaseData";
 import { supabase } from "@/lib/supabase";
 import { toast } from "sonner";
+import TopNav from "@/components/TopNav";
 
 interface Pet {
   id: string;
@@ -36,76 +34,90 @@ interface QuestionnaireRecord {
   created_at: string;
 }
 
+interface Booking {
+  id: string;
+  service_type: string;
+  start_date: string;
+  end_date: string;
+  status: string;
+  price: number | null;
+  pet_name: string | null;
+  dropoff_time: string | null;
+  created_at: string;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    confirmed:
+      "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+    pending:
+      "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+    cancelled:
+      "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+  };
+  return (
+    <span
+      className={`px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+        styles[status] || styles.pending
+      }`}
+    >
+      {status}
+    </span>
+  );
+}
+
 export default function CustomerDashboard() {
   const [, setLocation] = useLocation();
   const { user, signOut, loading: authLoading } = useSupabaseAuth();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<
-    "bookings" | "pets" | "questionnaire" | "messages" | "history" | "reviews"
-  >("bookings");
 
-  // Pets state
   const [pets, setPets] = useState<Pet[]>([]);
-  const [loadingPets, setLoadingPets] = useState(true);
-
-  // Questionnaire state
-  const [questionnaires, setQuestionnaires] = useState<QuestionnaireRecord[]>([]);
-  const [loadingQuestionnaires, setLoadingQuestionnaires] = useState(true);
+  const [questionnaires, setQuestionnaires] = useState<QuestionnaireRecord[]>(
+    []
+  );
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
   // Redirect if not authenticated
-  if (!authLoading && !user) {
-    setLocation("/login");
-    return null;
-  }
+  useEffect(() => {
+    if (!authLoading && !user) {
+      setLocation("/login");
+    }
+  }, [authLoading, user, setLocation]);
 
-  // Fetch real data from Supabase
-  const { bookings, loading: bookingsLoading } = useBookings(user?.id || null);
-  const { messages, loading: messagesLoading } = useMessages(user?.id || null);
-
-  // Fetch pets
+  // Fetch all data
   useEffect(() => {
     if (!user) return;
-    const fetchPets = async () => {
-      setLoadingPets(true);
+    const fetchAll = async () => {
+      setLoadingData(true);
       try {
-        const { data, error } = await supabase
-          .from("pets")
-          .select("id, name, breed, age")
-          .eq("owner_id", user.id)
-          .order("created_at", { ascending: false });
+        const [petsRes, questRes, bookingsRes] = await Promise.all([
+          supabase
+            .from("pets")
+            .select("id, name, breed, age")
+            .eq("owner_id", user.id)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("questionnaires")
+            .select("id, pet_id, created_at")
+            .eq("customer_id", user.id)
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("bookings")
+            .select("*")
+            .eq("customer_id", user.id)
+            .order("start_date", { ascending: true }),
+        ]);
 
-        if (error) throw error;
-        setPets(data || []);
+        if (petsRes.data) setPets(petsRes.data);
+        if (questRes.data) setQuestionnaires(questRes.data);
+        if (bookingsRes.data) setBookings(bookingsRes.data);
       } catch (err) {
-        console.error("Error fetching pets:", err);
+        console.error("Error fetching dashboard data:", err);
       } finally {
-        setLoadingPets(false);
+        setLoadingData(false);
       }
     };
-    fetchPets();
-  }, [user]);
-
-  // Fetch questionnaires
-  useEffect(() => {
-    if (!user) return;
-    const fetchQuestionnaires = async () => {
-      setLoadingQuestionnaires(true);
-      try {
-        const { data, error } = await supabase
-          .from("questionnaires")
-          .select("id, pet_id, created_at")
-          .eq("customer_id", user.id)
-          .order("created_at", { ascending: false });
-
-        if (error) throw error;
-        setQuestionnaires(data || []);
-      } catch (err) {
-        console.error("Error fetching questionnaires:", err);
-      } finally {
-        setLoadingQuestionnaires(false);
-      }
-    };
-    fetchQuestionnaires();
+    fetchAll();
   }, [user]);
 
   const handleLogout = async () => {
@@ -118,18 +130,51 @@ export default function CustomerDashboard() {
     }
   };
 
-  const handleBooking = () => {
-    setLocation("/booking");
-  };
+  // Derived data
+  const today = new Date().toISOString().split("T")[0];
+  const upcomingBookings = bookings.filter(
+    (b) => b.end_date >= today && b.status !== "cancelled"
+  );
+  const pastBookings = bookings.filter(
+    (b) => b.end_date < today || b.status === "cancelled"
+  );
+  const hasQuestionnaire = questionnaires.length > 0;
+  const userName =
+    user?.user_metadata?.full_name ||
+    user?.user_metadata?.name ||
+    user?.email?.split("@")[0] ||
+    "there";
 
-  if (authLoading) {
+  if (authLoading || !user) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin mb-4">
-            <PawHeartLogo size={48} />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  // If user has no pets, guide them to add one first
+  if (!loadingData && pets.length === 0) {
+    return (
+      <div className="min-h-screen bg-background">
+        <TopNav />
+        <div className="container max-w-lg mx-auto py-20 text-center space-y-6">
+          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+            <Dog className="w-10 h-10 text-primary" />
           </div>
-          <p className="text-foreground/60">Loading...</p>
+          <h1 className="text-3xl font-serif font-bold">Welcome to Gentle Pawz!</h1>
+          <p className="text-foreground/60 text-lg">
+            Let's get started by adding your furry friend's profile. This helps us
+            provide the best care possible.
+          </p>
+          <Button
+            onClick={() => setLocation("/pets")}
+            className="bg-primary hover:bg-primary/90 gap-2"
+            size="lg"
+          >
+            <PawPrint className="w-5 h-5" />
+            Add Your First Pet
+          </Button>
         </div>
       </div>
     );
@@ -137,416 +182,345 @@ export default function CustomerDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
-      <div className="border-b border-border">
-        <div className="container h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <PawHeartLogo size={24} className="text-primary" />
-            <span className="font-serif font-bold">Gentle Pawz</span>
+      <TopNav />
+
+      <div className="container max-w-6xl mx-auto py-8 px-4 space-y-8">
+        {/* Welcome Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-serif font-bold">
+              Welcome back, {userName}!
+            </h1>
+            <p className="text-foreground/60 mt-1">
+              Here's an overview of your account
+            </p>
           </div>
-          <div className="hidden md:flex items-center gap-4">
-            <Button variant="outline" onClick={handleBooking}>
-              Book a Stay
-            </Button>
-            <Button variant="ghost" onClick={handleLogout}>
-              <LogOut className="w-4 h-4 mr-2" />
-              Log Out
-            </Button>
-          </div>
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="md:hidden"
+          <Button
+            onClick={() => setLocation("/booking")}
+            className="bg-primary hover:bg-primary/90 gap-2 self-start"
           >
-            {sidebarOpen ? (
-              <X className="w-6 h-6" />
-            ) : (
-              <Menu className="w-6 h-6" />
-            )}
-          </button>
+            <Calendar className="w-4 h-4" />
+            Book a Stay
+          </Button>
         </div>
-      </div>
 
-      <div className="container py-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Sidebar */}
-          <div className={`${sidebarOpen ? "block" : "hidden"} md:block`}>
-            <div className="space-y-2">
-              <button
-                onClick={() => setActiveTab("bookings")}
-                className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === "bookings"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent"
-                }`}
-              >
-                <Calendar className="w-4 h-4 inline mr-2" />
-                My Bookings
-              </button>
-              <button
-                onClick={() => setActiveTab("pets")}
-                className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === "pets"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent"
-                }`}
-              >
-                <PawPrint className="w-4 h-4 inline mr-2" />
-                My Pets
-              </button>
-              <button
-                onClick={() => setActiveTab("questionnaire")}
-                className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === "questionnaire"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent"
-                }`}
-              >
-                <ClipboardList className="w-4 h-4 inline mr-2" />
-                Questionnaire
-              </button>
-              <button
-                onClick={() => setActiveTab("messages")}
-                className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === "messages"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent"
-                }`}
-              >
-                <MessageCircle className="w-4 h-4 inline mr-2" />
-                Messages
-              </button>
-              <button
-                onClick={() => setActiveTab("history")}
-                className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === "history"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent"
-                }`}
-              >
-                <History className="w-4 h-4 inline mr-2" />
-                History
-              </button>
-              <button
-                onClick={() => setActiveTab("reviews")}
-                className={`w-full text-left px-4 py-2 rounded-lg transition-colors ${
-                  activeTab === "reviews"
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent"
-                }`}
-              >
-                <Star className="w-4 h-4 inline mr-2" />
-                Reviews
-              </button>
-            </div>
+        {/* Status Cards */}
+        {loadingData ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Pets Card */}
+              <Card className="p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <Dog className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{pets.length}</p>
+                    <p className="text-sm text-foreground/60">
+                      Pet{pets.length !== 1 ? "s" : ""} Registered
+                    </p>
+                  </div>
+                </div>
+              </Card>
 
-          {/* Main Content */}
-          <div className="md:col-span-3">
-            {/* BOOKINGS TAB */}
-            {activeTab === "bookings" && (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-serif font-bold">My Bookings</h2>
-                  <Button
-                    onClick={handleBooking}
-                    className="bg-primary hover:bg-primary/90"
+              {/* Upcoming Bookings Card */}
+              <Card className="p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                    <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">
+                      {upcomingBookings.length}
+                    </p>
+                    <p className="text-sm text-foreground/60">
+                      Upcoming Booking{upcomingBookings.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Questionnaire Card */}
+              <Card className="p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                      hasQuestionnaire
+                        ? "bg-green-100 dark:bg-green-900/30"
+                        : "bg-amber-100 dark:bg-amber-900/30"
+                    }`}
                   >
-                    Book a Stay
+                    {hasQuestionnaire ? (
+                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                    ) : (
+                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    )}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {hasQuestionnaire ? "Completed" : "Not Done"}
+                    </p>
+                    <p className="text-sm text-foreground/60">Questionnaire</p>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Total Bookings Card */}
+              <Card className="p-5 hover:shadow-md transition-shadow">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-bold">{bookings.length}</p>
+                    <p className="text-sm text-foreground/60">Total Bookings</p>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            {/* Questionnaire CTA if not completed */}
+            {!hasQuestionnaire && (
+              <Card className="p-5 border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                  <div className="flex items-center gap-3 flex-1">
+                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <div>
+                      <p className="font-medium text-amber-800 dark:text-amber-300">
+                        Complete Your Questionnaire
+                      </p>
+                      <p className="text-sm text-amber-700/70 dark:text-amber-400/70">
+                        Help us understand your pup better so we can provide the
+                        best care.
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 border-amber-300 text-amber-800 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/30 shrink-0"
+                    onClick={() => setLocation("/questionnaire")}
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    Fill Out Now
                   </Button>
                 </div>
+              </Card>
+            )}
 
-                {bookingsLoading ? (
-                  <p className="text-foreground/60">Loading bookings...</p>
-                ) : bookings.length === 0 ? (
-                  <Card className="p-8 text-center">
-                    <Calendar className="w-12 h-12 text-primary/30 mx-auto mb-4" />
-                    <p className="text-foreground/60 mb-4">No bookings yet</p>
-                    <Button
-                      onClick={handleBooking}
-                      className="bg-primary hover:bg-primary/90"
+            {/* Quick Actions */}
+            <div>
+              <h2 className="text-lg font-semibold mb-4">Quick Actions</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <button
+                  onClick={() => setLocation("/booking")}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <Calendar className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium">Book a Stay</span>
+                </button>
+
+                <button
+                  onClick={() => setLocation("/pets")}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <PawPrint className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium">My Pets</span>
+                </button>
+
+                <button
+                  onClick={() => setLocation("/questionnaire")}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <ClipboardList className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium">Questionnaire</span>
+                </button>
+
+                <button
+                  onClick={() => setLocation("/")}
+                  className="flex flex-col items-center gap-2 p-4 rounded-xl border border-border hover:bg-primary/5 hover:border-primary/30 transition-all group"
+                >
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <Home className="w-5 h-5 text-primary" />
+                  </div>
+                  <span className="text-sm font-medium">Home</span>
+                </button>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Upcoming Bookings */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">Upcoming Bookings</h2>
+                {upcomingBookings.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="gap-1 text-primary"
+                    onClick={() => setLocation("/booking")}
+                  >
+                    Book Another
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Button>
+                )}
+              </div>
+
+              {upcomingBookings.length === 0 ? (
+                <Card className="p-8 text-center">
+                  <Calendar className="w-12 h-12 text-primary/20 mx-auto mb-4" />
+                  <p className="text-foreground/60 mb-4">
+                    No upcoming bookings
+                  </p>
+                  <Button
+                    onClick={() => setLocation("/booking")}
+                    className="bg-primary hover:bg-primary/90 gap-2"
+                  >
+                    <Calendar className="w-4 h-4" />
+                    Book Your First Stay
+                  </Button>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {upcomingBookings.map((booking) => (
+                    <Card
+                      key={booking.id}
+                      className="p-5 hover:shadow-md transition-shadow"
                     >
-                      Book Your First Stay
-                    </Button>
-                  </Card>
-                ) : (
-                  <div className="space-y-4">
-                    {bookings.map((booking) => (
-                      <Card key={booking.id} className="p-6">
-                        <div className="flex justify-between items-start">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-0.5">
+                            <PawPrint className="w-5 h-5 text-primary" />
+                          </div>
                           <div>
-                            <h3 className="font-semibold text-lg capitalize">
-                              {booking.service_type}
+                            <h3 className="font-semibold capitalize">
+                              {booking.service_type || "Boarding"}
+                              {booking.pet_name && (
+                                <span className="text-foreground/60 font-normal">
+                                  {" "}
+                                  — {booking.pet_name}
+                                </span>
+                              )}
                             </h3>
-                            <p className="text-foreground/60">
-                              {new Date(booking.start_date).toLocaleDateString()}{" "}
+                            <p className="text-sm text-foreground/60 mt-0.5">
+                              {new Date(
+                                booking.start_date
+                              ).toLocaleDateString()}{" "}
                               &rarr;{" "}
-                              {new Date(booking.end_date).toLocaleDateString()}
+                              {new Date(
+                                booking.end_date
+                              ).toLocaleDateString()}
                             </p>
-                            {booking.price && (
-                              <p className="text-sm text-foreground/60 mt-1">
+                            {booking.dropoff_time && (
+                              <p className="text-xs text-foreground/50 mt-0.5">
+                                Drop-off: {booking.dropoff_time}
+                              </p>
+                            )}
+                            {booking.price != null && (
+                              <p className="text-sm font-medium mt-1">
                                 ${booking.price}
                               </p>
                             )}
                           </div>
-                          <span
-                            className={`px-3 py-1 rounded-full text-sm font-medium ${
-                              booking.status === "confirmed"
-                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                : "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                            }`}
-                          >
-                            {booking.status}
-                          </span>
                         </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* PETS TAB */}
-            {activeTab === "pets" && (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-serif font-bold">My Pets</h2>
-                  <Button
-                    onClick={() => setLocation("/pets")}
-                    className="bg-primary hover:bg-primary/90 gap-2"
-                  >
-                    <PawPrint className="w-4 h-4" />
-                    Manage Pets
-                  </Button>
-                </div>
-
-                {loadingPets ? (
-                  <p className="text-foreground/60">Loading pets...</p>
-                ) : pets.length === 0 ? (
-                  <Card className="p-8 text-center">
-                    <Dog className="w-12 h-12 text-primary/30 mx-auto mb-4" />
-                    <p className="text-foreground/60 mb-4">
-                      No pets added yet
-                    </p>
-                    <Button
-                      onClick={() => setLocation("/pets")}
-                      className="bg-primary hover:bg-primary/90 gap-2"
-                    >
-                      <PawPrint className="w-4 h-4" />
-                      Add Your First Pet
-                    </Button>
-                  </Card>
-                ) : (
-                  <div className="space-y-3">
-                    {pets.map((pet) => (
-                      <Card key={pet.id} className="p-5">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <Dog className="w-5 h-5 text-primary" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold">{pet.name}</h3>
-                              <p className="text-sm text-foreground/60">
-                                {[pet.breed, pet.age]
-                                  .filter(Boolean)
-                                  .join(" • ")}
-                              </p>
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setLocation("/pets")}
-                            className="gap-1 text-primary"
-                          >
-                            Edit
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
-                    <div className="text-center pt-2">
-                      <button
-                        onClick={() => setLocation("/pets")}
-                        className="text-sm text-primary hover:underline"
-                      >
-                        Manage all pets &rarr;
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* QUESTIONNAIRE TAB */}
-            {activeTab === "questionnaire" && (
-              <div>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-serif font-bold">
-                    Client Questionnaire
-                  </h2>
-                </div>
-
-                {loadingQuestionnaires ? (
-                  <p className="text-foreground/60">Loading...</p>
-                ) : questionnaires.length === 0 ? (
-                  <Card className="p-8 text-center">
-                    <ClipboardList className="w-12 h-12 text-primary/30 mx-auto mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">
-                      Questionnaire Not Completed
-                    </h3>
-                    <p className="text-foreground/60 mb-4">
-                      Please fill out the new client questionnaire so we can
-                      provide the best care for your pup.
-                    </p>
-                    <Button
-                      onClick={() => setLocation("/questionnaire")}
-                      className="bg-primary hover:bg-primary/90 gap-2"
-                    >
-                      <ClipboardList className="w-4 h-4" />
-                      Fill Out Questionnaire
-                    </Button>
-                  </Card>
-                ) : (
-                  <div className="space-y-4">
-                    <Card className="p-6 bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800">
-                      <div className="flex items-center gap-3">
-                        <CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />
-                        <div>
-                          <h3 className="font-semibold text-green-800 dark:text-green-300">
-                            Questionnaire Completed
-                          </h3>
-                          <p className="text-sm text-green-700/70 dark:text-green-400/70">
-                            Submitted on{" "}
-                            {new Date(
-                              questionnaires[0].created_at
-                            ).toLocaleDateString()}
-                          </p>
-                        </div>
+                        <StatusBadge status={booking.status} />
                       </div>
                     </Card>
+                  ))}
+                </div>
+              )}
+            </div>
 
-                    {questionnaires.length > 0 && (
-                      <div className="space-y-2">
-                        <p className="text-sm text-foreground/60">
-                          You have {questionnaires.length} questionnaire
-                          {questionnaires.length > 1 ? "s" : ""} on file.
-                        </p>
-                        <Button
-                          variant="outline"
-                          onClick={() => setLocation("/questionnaire")}
-                          className="gap-2"
-                        >
-                          <ClipboardList className="w-4 h-4" />
-                          Submit Another Questionnaire
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* MESSAGES TAB */}
-            {activeTab === "messages" && (
+            {/* Past Bookings (collapsed) */}
+            {pastBookings.length > 0 && (
               <div>
-                <h2 className="text-2xl font-serif font-bold mb-6">Messages</h2>
-                {messagesLoading ? (
-                  <p className="text-foreground/60">Loading messages...</p>
-                ) : messages.length === 0 ? (
-                  <Card className="p-8 text-center">
-                    <MessageCircle className="w-12 h-12 text-primary/30 mx-auto mb-4" />
-                    <p className="text-foreground/60">No messages yet</p>
-                  </Card>
-                ) : (
-                  <div className="space-y-4">
-                    {messages.map((message) => (
-                      <Card
-                        key={message.id}
-                        className="p-6 hover:bg-accent transition-colors cursor-pointer"
-                      >
-                        <div className="flex justify-between items-start">
+                <h2 className="text-lg font-semibold mb-4 text-foreground/70">
+                  Past Bookings
+                </h2>
+                <div className="space-y-2">
+                  {pastBookings.slice(0, 5).map((booking) => (
+                    <Card
+                      key={booking.id}
+                      className="p-4 opacity-70 hover:opacity-100 transition-opacity"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Dog className="w-4 h-4 text-foreground/40" />
                           <div>
-                            <h3 className="font-semibold">
-                              {message.sender_id === user?.id
-                                ? "You"
-                                : "Emily"}
-                            </h3>
-                            <p className="text-foreground/60 mt-2">
-                              {message.content}
+                            <p className="text-sm font-medium capitalize">
+                              {booking.service_type || "Boarding"}
+                              {booking.pet_name && ` — ${booking.pet_name}`}
+                            </p>
+                            <p className="text-xs text-foreground/50">
+                              {new Date(
+                                booking.start_date
+                              ).toLocaleDateString()}{" "}
+                              &rarr;{" "}
+                              {new Date(
+                                booking.end_date
+                              ).toLocaleDateString()}
                             </p>
                           </div>
-                          <span className="text-xs text-foreground/40">
-                            {new Date(
-                              message.created_at
-                            ).toLocaleDateString()}
-                          </span>
                         </div>
-                      </Card>
-                    ))}
-                  </div>
-                )}
+                        <StatusBadge status={booking.status} />
+                      </div>
+                    </Card>
+                  ))}
+                  {pastBookings.length > 5 && (
+                    <p className="text-sm text-foreground/50 text-center pt-2">
+                      + {pastBookings.length - 5} more past booking
+                      {pastBookings.length - 5 > 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
-            {/* HISTORY TAB */}
-            {activeTab === "history" && (
-              <div>
-                <h2 className="text-2xl font-serif font-bold mb-6">
-                  Booking History
-                </h2>
-                <Card className="p-8 text-center">
-                  <History className="w-12 h-12 text-primary/30 mx-auto mb-4" />
-                  <p className="text-foreground/60">
-                    Your completed bookings will appear here
-                  </p>
-                </Card>
+            {/* My Pets Section */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold">My Pets</h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1 text-primary"
+                  onClick={() => setLocation("/pets")}
+                >
+                  Manage
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </Button>
               </div>
-            )}
-
-            {/* REVIEWS TAB */}
-            {activeTab === "reviews" && (
-              <div>
-                <h2 className="text-2xl font-serif font-bold mb-6">
-                  Leave a Review
-                </h2>
-                <Card className="p-6">
-                  <form className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium mb-2">
-                        Rating
-                      </label>
-                      <div className="flex gap-2">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <button
-                            key={star}
-                            type="button"
-                            className="text-2xl hover:scale-110 transition-transform"
-                          >
-                            ⭐
-                          </button>
-                        ))}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {pets.map((pet) => (
+                  <Card key={pet.id} className="p-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                        <Dog className="w-4 h-4 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{pet.name}</p>
+                        <p className="text-xs text-foreground/60">
+                          {[pet.breed, pet.age].filter(Boolean).join(" • ")}
+                        </p>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-2">
-                        Your Review
-                      </label>
-                      <textarea
-                        className="w-full p-3 border border-border rounded-lg bg-background"
-                        rows={4}
-                        placeholder="Share your experience..."
-                      />
-                    </div>
-                    <Button className="bg-primary hover:bg-primary/90">
-                      Submit Review
-                    </Button>
-                  </form>
-                </Card>
+                  </Card>
+                ))}
               </div>
-            )}
-          </div>
-        </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
