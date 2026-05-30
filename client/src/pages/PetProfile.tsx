@@ -144,13 +144,30 @@ export default function PetProfile() {
         });
 
         if (error) throw error;
-        toast.success(`Pet added! Now tell us more about ${formData.name.trim()}`);
-        // Redirect to questionnaire after creating a new pet
+
+        // Check if customer already has a questionnaire on file
+        const { data: existingQuestionnaires, error: questError } = await supabase
+          .from("questionnaires")
+          .select("id")
+          .eq("customer_id", user.id)
+          .limit(1);
+
+        const hasQuestionnaire = !questError && existingQuestionnaires && existingQuestionnaires.length > 0;
+
         setFormData(emptyForm);
         setShowForm(false);
         setEditingId(null);
         setSubmitting(false);
-        setLocation("/questionnaire");
+
+        if (!hasQuestionnaire) {
+          // First time: guide them to fill out the questionnaire
+          toast.success(`Pet added! Now tell us more about your care preferences`);
+          setLocation("/questionnaire");
+        } else {
+          // Already have a questionnaire: stay on pets page
+          toast.success("Pet added successfully!");
+          fetchPets();
+        }
         return;
       }
 

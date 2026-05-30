@@ -5,7 +5,6 @@ import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
   Calendar,
-  LogOut,
   PawPrint,
   ClipboardList,
   Dog,
@@ -18,7 +17,6 @@ import {
 } from "lucide-react";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 import { supabase } from "@/lib/supabase";
-import { toast } from "sonner";
 import TopNav from "@/components/TopNav";
 
 interface Pet {
@@ -68,7 +66,7 @@ function StatusBadge({ status }: { status: string }) {
 
 export default function CustomerDashboard() {
   const [, setLocation] = useLocation();
-  const { user, signOut, loading: authLoading } = useSupabaseAuth();
+  const { user, loading: authLoading } = useSupabaseAuth();
 
   const [pets, setPets] = useState<Pet[]>([]);
   const [questionnaires, setQuestionnaires] = useState<QuestionnaireRecord[]>(
@@ -119,16 +117,6 @@ export default function CustomerDashboard() {
     };
     fetchAll();
   }, [user]);
-
-  const handleLogout = async () => {
-    try {
-      await signOut();
-      toast.success("Logged out successfully");
-      setLocation("/");
-    } catch (error: any) {
-      toast.error("Failed to log out");
-    }
-  };
 
   // Derived data
   const today = new Date().toISOString().split("T")[0];
