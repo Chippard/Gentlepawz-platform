@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PawHeartLogo } from "@/components/PawHeartLogo";
-import { ArrowLeft, Lock, CheckCircle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Lock, CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 
@@ -15,6 +15,8 @@ export default function ResetPassword() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sessionReady, setSessionReady] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     // Handle both PKCE (code in query params) and implicit flow (tokens in hash)
@@ -168,13 +170,22 @@ export default function ResetPassword() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 w-4 h-4 text-foreground/40" />
                     <Input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 pr-10"
                       disabled={loading}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-3 top-3 text-foreground/40 hover:text-foreground/70 transition-colors"
+                      tabIndex={-1}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
@@ -183,13 +194,22 @@ export default function ResetPassword() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 w-4 h-4 text-foreground/40" />
                     <Input
-                      type="password"
+                      type={showConfirmPassword ? "text" : "password"}
                       placeholder="••••••••"
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="pl-10"
+                      className="pl-10 pr-10"
                       disabled={loading}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((v) => !v)}
+                      className="absolute right-3 top-3 text-foreground/40 hover:text-foreground/70 transition-colors"
+                      tabIndex={-1}
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 

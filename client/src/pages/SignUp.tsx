@@ -3,7 +3,7 @@ import { useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PawHeartLogo } from "@/components/PawHeartLogo";
-import { ArrowLeft, Mail, Lock, User, CheckCircle, AlertCircle } from "lucide-react";
+import { ArrowLeft, Mail, Lock, User, CheckCircle, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
@@ -26,6 +26,8 @@ export default function SignUp() {
   const [loading, setLoading] = useState(false);
   const [signupState, setSignupState] = useState<SignupState>("form");
   const [errorMessage, setErrorMessage] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -273,15 +275,24 @@ export default function SignUp() {
               <div className="relative">
                 <Lock className="absolute left-3 top-3 w-4 h-4 text-foreground/40" />
                 <Input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   name="password"
                   placeholder="Min. 8 characters"
                   value={formData.password}
                   onChange={handleChange}
-                  className="pl-10"
+                  className="pl-10 pr-10"
                   disabled={loading}
                   autoComplete="new-password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-3 top-3 text-foreground/40 hover:text-foreground/70 transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
@@ -290,15 +301,24 @@ export default function SignUp() {
               <div className="relative">
                 <Lock className="absolute left-3 top-3 w-4 h-4 text-foreground/40" />
                 <Input
-                  type="password"
+                  type={showConfirmPassword ? "text" : "password"}
                   name="confirmPassword"
                   placeholder="Repeat password"
                   value={formData.confirmPassword}
                   onChange={handleChange}
-                  className="pl-10"
+                  className="pl-10 pr-10"
                   disabled={loading}
                   autoComplete="new-password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  className="absolute right-3 top-3 text-foreground/40 hover:text-foreground/70 transition-colors"
+                  tabIndex={-1}
+                  aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                >
+                  {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 

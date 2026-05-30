@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PawHeartLogo } from "@/components/PawHeartLogo";
-import { ArrowLeft, Mail, Lock, AlertCircle } from "lucide-react";
+import { ArrowLeft, Mail, Lock, AlertCircle, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { useSupabaseAuth } from "@/contexts/SupabaseAuthContext";
 
@@ -13,6 +13,7 @@ export default function Login() {
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [submitting, setSubmitting] = useState(false);
   const [repairing, setRepairing] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   // Track whether we initiated a login so we know to redirect once role resolves
   const pendingRedirect = useRef(false);
 
@@ -166,15 +167,24 @@ export default function Login() {
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 w-4 h-4 text-foreground/40" />
                     <Input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       name="password"
                       placeholder="••••••••"
                       value={formData.password}
                       onChange={handleChange}
-                      className="pl-10"
+                      className="pl-10 pr-10"
                       disabled={submitting}
                       autoComplete="current-password"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      className="absolute right-3 top-3 text-foreground/40 hover:text-foreground/70 transition-colors"
+                      tabIndex={-1}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
