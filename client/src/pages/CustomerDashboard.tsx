@@ -106,6 +106,9 @@ export default function CustomerDashboard() {
             .order("start_date", { ascending: true }),
         ]);
 
+        if (petsRes.error) console.error("Pets fetch error:", petsRes.error);
+        if (questRes.error) console.error("Questionnaires fetch error:", questRes.error);
+        if (bookingsRes.error) console.error("Bookings fetch error:", bookingsRes.error);
         if (petsRes.data) setPets(petsRes.data);
         if (questRes.data) setQuestionnaires(questRes.data);
         if (bookingsRes.data) setBookings(bookingsRes.data);
@@ -146,7 +149,7 @@ export default function CustomerDashboard() {
     return (
       <div className="min-h-screen bg-background">
         <TopNav />
-        <div className="container max-w-lg mx-auto py-20 text-center space-y-6">
+        <div className="container max-w-lg mx-auto pt-28 pb-12 text-center space-y-6">
           <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
             <Dog className="w-10 h-10 text-primary" />
           </div>
@@ -172,7 +175,7 @@ export default function CustomerDashboard() {
     <div className="min-h-screen bg-background">
       <TopNav />
 
-      <div className="container max-w-6xl mx-auto py-8 px-4 space-y-8">
+      <div className="container max-w-6xl mx-auto pt-24 pb-12 px-4 space-y-8">
         {/* Welcome Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
