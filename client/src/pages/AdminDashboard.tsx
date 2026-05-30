@@ -1117,6 +1117,35 @@ export default function AdminDashboard() {
         .eq("id", bookingId);
       if (error) throw error;
       toast.success(`Booking ${newStatus}`);
+
+      // Send status notification email to customer
+      if (newStatus === "confirmed" || newStatus === "cancelled") {
+        const booking = bookings.find((b) => b.id === bookingId);
+        if (booking) {
+          const customerEmail = getDisplayEmail(booking);
+          const customerName = getDisplayName(booking);
+          const petName = getDisplayPetName(booking);
+
+          if (customerEmail && customerEmail !== "—") {
+            try {
+              await supabase.functions.invoke("notify-booking-status", {
+                body: {
+                  customer_email: customerEmail,
+                  customer_name: customerName !== "—" ? customerName : "Valued Customer",
+                  pet_name: petName !== "—" ? petName : "your pet",
+                  service_type: booking.service_type || "boarding",
+                  start_date: booking.start_date || "",
+                  end_date: booking.end_date || "",
+                  status: newStatus,
+                },
+              });
+            } catch (notifyErr) {
+              console.error("Failed to send status notification:", notifyErr);
+            }
+          }
+        }
+      }
+
       fetchBookings();
     } catch (error: any) {
       toast.error(`Failed to update: ${error.message}`);

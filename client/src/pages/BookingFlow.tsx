@@ -328,6 +328,26 @@ export default function BookingFlow() {
       });
 
       if (error) throw error;
+
+      // Send notification email to admin
+      try {
+        await supabase.functions.invoke("notify-new-booking", {
+          body: {
+            customer_name: user.user_metadata?.full_name || user.email || "Unknown",
+            customer_email: user.email || "",
+            pet_name: selectedPet?.name || "Unknown",
+            service_type: selectedService,
+            start_date: format(startDate, "yyyy-MM-dd"),
+            end_date: format(endDate, "yyyy-MM-dd"),
+            dropoff_time: dropoffTime || null,
+            notes: notes.trim() || null,
+          },
+        });
+      } catch (notifyErr) {
+        // Don't block the booking if notification fails
+        console.error("Failed to send booking notification:", notifyErr);
+      }
+
       setSubmitted(true);
       toast.success("Booking request submitted!");
     } catch (err: any) {
