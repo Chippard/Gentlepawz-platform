@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation, useSearch } from "wouter";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PawHeartLogo } from "@/components/PawHeartLogo";
@@ -9,19 +9,58 @@ import { supabase } from "@/lib/supabase";
 
 export default function ResetPassword() {
   const [, setLocation] = useLocation();
-  const search = useSearch();
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
-    // Check if we have a valid reset token in the URL
-    const hash = window.location.hash;
-    if (!hash.includes("type=recovery")) {
+    // Handle both PKCE (code in query params) and implicit flow (tokens in hash)
+    const handleRecoveryToken = async () => {
+      // --- PKCE flow: Supabase redirects with ?code=... in the query string ---
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+
+      if (code) {
+        // Exchange the PKCE code for a session
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchangeError) {
+          setError("Invalid or expired reset link. Please request a new one.");
+          return;
+        }
+        // Clean up the URL so the code isn't reused on refresh
+        window.history.replaceState({}, document.title, window.location.pathname);
+        setSessionReady(true);
+        return;
+      }
+
+      // --- Implicit / legacy flow: tokens arrive in the URL hash ---
+      const hash = window.location.hash;
+      if (hash.includes("type=recovery")) {
+        // Supabase JS v2 automatically parses the hash and establishes the session
+        // via onAuthStateChange(PASSWORD_RECOVERY). We just need to wait for it.
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          setSessionReady(true);
+          return;
+        }
+        // If session isn't ready yet, wait for the auth state change
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+          if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
+            setSessionReady(true);
+            subscription.unsubscribe();
+          }
+        });
+        return;
+      }
+
+      // No valid token found
       setError("Invalid or expired reset link. Please request a new one.");
-    }
+    };
+
+    handleRecoveryToken();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -108,6 +147,10 @@ export default function ResetPassword() {
               <p className="text-foreground/60 mb-8">
                 Your password has been reset successfully. Redirecting to login...
               </p>
+            </div>
+          ) : !sessionReady ? (
+            <div className="text-center">
+              <p className="text-foreground/60">Verifying reset link...</p>
             </div>
           ) : (
             <>
